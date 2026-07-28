@@ -218,7 +218,154 @@ Q1 已经把这一步的约束收窄了：**Codex 只能用 1455 / 1457 两个�
 
 不一致不算失败，但要记录差异——可能意味着移动端拿到的 scope 和桌面端不同。
 
-**判定**：两个 Provider 都能返回可解析的额度数据即通过。
+**判定**：两个 Provider 都能返回可解析的额度数据即通过。详细检查表见 4.6。
+
+以下 4.1–4.7 是可直接执行的方案，不需要再做设计判断。
+
+#### 4.1 Q4 必须把 Q1 重跑一遍
+
+Q1 拿到的 authorization code **不能复用**：它是一次性的，且当时明确未换 token、未落盘，早已失效。
+
+因此 Q4 是一条端到端链路，不是接着 Q1 的接力棒：
+
+```text
+起 loopback server → 系统浏览器打开 authorize → 接住 code
+  → ① 换 token → ② 调 usage → ③ 落盘脱敏 fixture
+```
+
+Q1、Q2 的脚本没有入库，这次要重写。**本次脚本必须入库**——Q3 上真机时还要再走一遍同样的流程。
+
+#### 4.2 三个未知数
+
+文档原本只写了 scope 一个，实际有三个，其中第三个是移动端独有的。
+
+**① scope 是否够。** 见 Q2「最小 scope」小节，目前只知道全量集合可用、服务端接受子集。
+
+**② Claude 的跨域名组合是否成立。** authorize 在 `claude.ai/oauth/authorize`，token 交换在 `platform.claude.com/v1/oauth/token`。Q1 只验到 code 为止，这个跨域名组合从未实测。
+
+**③ Codex 的 `ChatGPT-Account-Id` 从哪来。**（桌面端无法回答的新问题）
+
+桌面端调 usage 时带了这个头，来源是三级回退，见 cc-trace 的 `src-tauri/src/providers/credentials/codex.rs`：
+
+```text
+tokens.account_id（auth.json 字段）
+  → access_token 的 chatgpt_account_id claim
+  → id_token 的 chatgpt_account_id claim
+```
+
+**第一级在移动端根本不存在**（没有 auth.json），只能靠后两级从 JWT payload 里解。桌面端一直走的是第一级，所以它验证过的事实在这里用不上。
+
+Q2 记录的 authorize 参数里有 `id_token_add_organizations=true`，**推测**正是为了让 id_token 携带 org / account 信息——但这是推断，Q4 要实测。
+
+> 风险：三级全空时，Codex 的 usage 失败表现**与 scope 不足完全一样**（都是 4xx）。
+> 因此脚本必须在换到 token 的当下就输出 `account_id: present / absent`（只输出有无，不输出值），
+> 否则两种原因无法区分。
+
+#### 4.3 脚本形态
+
+| 项 | 规定 | 理由 |
+|---|---|---|
+| 语言 | Rust，独立 bin crate | 与最终实现同语言；PKCE / loopback 代码 Q3 可直接复用 |
+| 位置 | `verify/oauth/`，入库 | `cargo new` 不是 `tauri init`，不触碰骨架阶段纪律 |
+| 结构 | 一个 crate，两个 bin：`q4-codex`、`q4-claude` | 两家的 body 格式、请求头、端口差异过多，合并只会全是分支 |
+| 职责 | **只做网络请求与落盘，不做归一化** | 搬桌面端 normalize 会拖进 contracts 整套依赖，与验证目的无关 |
+
+**执行者不得做的事**：不要执行 `tauri init` 或任何平台初始化；不要写界面；不要实现 Provider trait、状态机或存储；不要把 token 写进任何文件（含 `fixtures/raw/`，理由见「证据留存」B 档）。
+
+##### 请求事实
+
+以下来自 cc-trace `src-tauri/src/providers/` 的已验证实现（2026-07-27 macOS 真实数据），**证据等级高，照抄即可**：
+
+| | Codex | Claude |
+|---|---|---|
+| usage 端点 | `GET https://chatgpt.com/backend-api/wham/usage` | `GET https://api.anthropic.com/api/oauth/usage` |
+| `Authorization` | `Bearer <access_token>` | 同左 |
+| `Accept` | `application/json` | `application/json` |
+| 专有头 | `User-Agent: codex-cli`<br>`ChatGPT-Account-Id: <account_id>` | `anthropic-beta: oauth-2025-04-20` |
+| token 端点 | `POST https://auth.openai.com/oauth/token` | `POST https://platform.claude.com/v1/oauth/token` |
+| token 请求体 | `application/x-www-form-urlencoded` | **`application/json`** |
+| 请求体额外字段 | — | **必须带 `state`**（非标准，Claude Code 如此发送） |
+
+> usage 端点没有 Cloudflare 人机校验——桌面端用普通 HTTP 客户端已跑通。
+> 有校验的只是 authorize **页面**，见 Q1 硬约束第 2 条。
+
+##### 端口
+
+Codex 固定用 `1455`（占用时退 `1457`，仅此两个）；Claude 固定用 `41999`（Q1 已验证通过），减少变量。两者的 `redirect_uri` 都必须用 `localhost` 字面量，且 token 交换时要与 authorize 时**完全一致**。
+
+#### 4.4 执行顺序：先全量 scope，再削减
+
+**必须先用 Q2 记录的全量 scope 跑通，再做削减实验。不要反过来。**
+
+反过来的问题是变量没有隔离：先试最小 scope 时拿到 4xx，无法区分是 scope 不够、`account_id` 缺失，还是跨域名组合不成立。
+
+[实施计划 §2](实施计划.md) 列了四个「做 Q4 时一起做掉」的搭车项，它们已经并进下表。
+**两项的位置是强制的，不能挪**：
+
+- **4a₀ 的 5 小时计时必须最先启动。** 实施计划的原话是「Q4 一开始就要挂上，不然会变成
+  S6 的阻塞项」。它是纯等待，越早挂上越不占用总时长。
+- **4f 的限流试探必须放在最后。** 试出最小刷新间隔意味着**反复调 usage 直到 429**，
+  一旦把账号打进退避期，4d 的 scope 削减实验就没法做了。
+
+| 阶段 | 做什么 | 产出 / 供给 |
+|---|---|---|
+| **4a₀** | 记下此刻，并**停止使用 Claude Code 对话**，挂起 5 小时计时 | 4e 的前置 |
+| 4a | Codex 全量 scope 端到端 | 200 + 原始 JSON + `account_id` 有无 |
+| 4b | Claude 全量 scope 端到端 | 200 + 原始 JSON |
+| 4c | 结构比对（4.5） | key diff 结果 |
+| 4c′ | 两份完整响应脱敏存 fixture | 供 S4——至今无人见过这两个接口的完整响应 |
+| 4d | scope 削减实验 | 最小可用集合，供 S2 |
+| 4e | 满 5 小时后重调 Claude usage，看 `session` 窗口的 `is_active` 是否转 `false` | 供 S6 文案 |
+| **4f** | **（最后做）** 递增频率调 usage 直到 429，记录触发阈值与 `Retry-After` | 最小安全刷新间隔，供 S5 |
+
+4e 要回答的是一个二选一：`is_active` 为 `false` 到底是「不适用」还是「未开始」——
+两种解释导向的用户决策相反，见 [移动端额度展示要求 §4.2](移动端额度展示要求.md)。
+
+4f 拿不到结果也可以收工：代价不对称，高估限流只是刷新慢一点，低估会导致功能整体不可用，
+所以缺数据时按**严**的假设配参数。
+
+4d 的重点是 Q2 末尾那个悬案：**`user:inference`（Claude）和 `api.connectors.invoke`（Codex）能否去掉**。这两项是「能直接消耗账号额度调模型」的权限，直接关系到「只读额度」原则能守到什么程度。每削一次都要重走一次授权，这是唯一验证方式。
+
+削不掉也是有价值的结论——把「无法规避」从推断升级为实测。
+
+#### 4.5 结构比对方法
+
+真实账号只有一种状态，桌面端 fixture 是多场景合集，**两者不可能完全相同**，不要按「完全一致」判定。
+
+提取 key 路径集合比对：
+
+```bash
+jq -r 'paths(scalars)|join(".")' fixtures/raw/codex-usage.json | sort
+```
+
+拿它与 cc-trace 的 `fixtures/providers/codex/usage-normal.json`（Claude 用 `usage-mixed.json`）的同样输出做 diff。
+
+**判定：实测 key ⊆ fixture key，且没有出现 fixture 里不存在的新 key。**
+缺 key 属正常（该账号没有那种额度窗口）；**出现新 key 才是需要处理的信号**，说明移动端拿到的响应与桌面端不同。
+
+#### 4.6 判定检查表
+
+- [ ] Codex：code → token 返回 200，响应含 `access_token` 与 `refresh_token`
+- [ ] Codex：`chatgpt_account_id` 能从 access_token 或 id_token 的 claim 解出
+- [ ] Codex：usage 返回 200，key ⊆ 桌面端 fixture
+- [ ] Claude：code → token 返回 200（请求体为 JSON 且含 `state`）
+- [ ] Claude：usage 返回 200（带 `anthropic-beta`），key ⊆ 桌面端 fixture
+- [ ] 两端各记录一次 token 过期时间（解 JWT 的 `exp`），供 Q3 的刷新调度参考
+
+> 第二项同时答掉 [实施计划 §5](实施计划.md) 最后一行「移动端身份的取得路径」。
+> 那份表把它挂在 S2，但实际上 **Q4 就必须解决**——Codex 的 usage 请求依赖 `account_id`，
+> 拿不到它 Q4 本身就过不了。结论出来后回填实施计划，不要等到 S2。
+
+#### 4.7 失败分支
+
+| 现象 | 最可能原因 | 回到哪一步 |
+|---|---|---|
+| token 交换 400 | 两家 body 格式弄反（Codex form / Claude JSON） | 脚本内修正，不回 Q2 |
+| Claude token 400 | 漏了非标准的 `state` 字段 | 同上 |
+| token 交换 400 且提示 redirect | token 请求的 `redirect_uri` 与 authorize 时不一致 | 脚本内修正 |
+| usage 4xx 且 `account_id: absent` | Codex 专有，JWT claim 里没有 | **新问题，回 Q2 补 authorize 参数** |
+| usage 4xx 且 `account_id: present` | scope 不足 | 回 Q2 加 scope，重走授权 |
+| usage 200 但出现新 key | 移动端 scope 与桌面端不同 | 不算失败，记录差异后继续 |
 
 ## 验证方式
 
@@ -234,6 +381,70 @@ Q1 已经把这一步的约束收窄了：**Codex 只能用 1455 / 1457 两个�
 - 真实响应存为**脱敏** fixture；原始响应不入库（`.gitignore` 已排除 `fixtures/raw/`）
 - 用自己的账号验证，不使用他人凭据
 - 只读额度，不碰对话内容
+
+## 证据留存
+
+上面四条是原则，这一节是执行细则。**验证过程中的接口数据要留存，但不是「全都存一份」**——按敏感度分三档，处置完全不同。
+
+### 为什么要留
+
+整个方案建立在冒用官方 CLI client_id 之上（见「结论」表格末行），对方随时可能收紧。
+
+将来接口一变，第一个要回答的问题永远是「**是我们写错了，还是对方改了**」。没有带日期的原始快照，就只能先怀疑自己的代码，排查成本极高。留存的目的是**建立基准线**，不是留个纪念。
+
+这个目的也决定了粒度：只存成功响应不够，要存到能重放对比的程度。
+
+### 三档
+
+| 档 | 内容 | 处置 |
+|---|---|---|
+| **A · 存全量** | usage 响应体、HTTP 响应头（去 `set-cookie`）、错误响应体、authorize 被拒时的跳转 URL | 原样落 `fixtures/raw/`，脱敏后入库 |
+| **B · 只存结构** | token 交换的响应 | **只记字段名、类型、长度；值一律不落盘** |
+| **C · 不存** | access / refresh token、id_token 原文、authorization code、`Authorization` 头的值 | 内存中用完即弃 |
+
+**B 档必须单独强调：`fixtures/raw/` 不是纪律豁免区。**
+
+它豁免的只是「未脱敏的额度数据」，不豁免凭据。token 响应即使写进被 gitignore 的目录，也是在磁盘上留下了明文 refresh_token，而 refresh_token 的有效期很长。**任何情况下都不得先 dump 再筛选。**
+
+id_token 是 B 档里最容易出事的一项：为了查 `chatgpt_account_id`（见 4.2 第三个未知数），必然要解它的 payload。**解出的 claim 键名可以记录，值不可以。**
+
+### 失败响应比成功响应更值钱
+
+Q1 已经证明了这一点。信息量最大的不是那两个成功的 code，而是这句：
+
+```text
+Redirect URI cctrace://callback is not supported by client.
+```
+
+「not supported by **client**」直接指向 client_id 的注册项，一句话定死了自定义 scheme 这条路。而 Codex 侧只给了个 `unknown_error`——**这个「什么都没说」本身也是必须记录的事实**，它意味着 Codex 的排查只能靠控制变量，不能靠读报错。
+
+因此 Q4 采集时，**故意制造的失败要和成功一样认真地留存**：故意少一个 scope、故意不带 `ChatGPT-Account-Id`、故意用已过期的 code。这几发失败响应的价值，大概率超过成功的那一发。
+
+### 脱敏用白名单，分两步
+
+黑名单（删掉已知敏感字段）会漏掉新出现的字段，**不得使用**。白名单（只保留已知安全字段）是安全的，但会把 4.5 要找的「新 key」一并吃掉。
+
+两步走，与现有 `.gitignore` 的设计一致：
+
+```text
+① 完整响应 → fixtures/raw/         已 gitignore，仅本地留存，用于发现新 key
+② 人工过目 → fixtures/providers/   白名单过滤后入库
+```
+
+`fixtures/raw/` 本来就被排除，这个两阶段结构是预设好的，不需要新造概念。
+
+额度数字本身不敏感（那正是要验证的东西），脱敏对象是可能混在响应里的 org id、邮箱、账号标识等。
+
+### 每份快照都要带元数据
+
+否则半年后无从判断它是何时、用什么账号、什么 scope 采集的。但元数据**不能塞进 JSON 本身**——fixture 要能直接喂给解析器。
+
+单独记在 `fixtures/采集记录.md`，沿用下面「验证记录」表的格式：
+
+| 文件 | 日期 | Provider | 账号类型 | scope | 结果 |
+|---|---|---|---|---|---|
+
+`scope` 一列是关键：4d 的削减实验中每发响应对应哪组 scope，不记下来实验就白做了。
 
 ## 结论
 
