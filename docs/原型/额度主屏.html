@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!--
+  CC Trace Mobile · 额度主屏状态原型
+  数据形态以 ../移动端额度展示要求.md 为准；视觉方向 HeroUI，与桌面端 ADR-0012 一致。
+  这是设计稿，不是应用代码：不进 Tauri 工程、不参与构建。
+  合成数据，不来自 Codex 或 Claude Code。
+-->
+<title>CC Trace Mobile · 状态原型</title>
+</head>
+<body>
+
+<style>
+  /* ==========================================================
+     展示台 —— 沿用 HeroUI 那份稿的 slate 冷灰展示台，方便两份并排看
+     ========================================================== */
+  :root { --pg: #f4f6f8; --pg-fg: #0d1117; --pg-mut: #64748b; --pg-bd: #e2e8f0; --pg-accent: #006fee; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --pg: #0b0d10; --pg-fg: #f2f4f6; --pg-mut: #8b96a5; --pg-bd: #1e2530; }
+  }
+  :root[data-theme="dark"] { --pg: #0b0d10; --pg-fg: #f2f4f6; --pg-mut: #8b96a5; --pg-bd: #1e2530; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--pg); color: var(--pg-fg);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+      "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  }
+
+  .wrap { max-width: 1560px; margin-inline: auto; padding: 0 clamp(1rem, 4vw, 2.5rem) 5rem; }
+  .head { padding: clamp(2.5rem, 7vh, 4rem) 0 1.25rem; max-width: 46rem; }
+  .head .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pg-accent); }
+  .head .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pg-accent); }
+  .head h1 { margin: 0.625rem 0 0; font-size: clamp(1.625rem, 3.6vw, 2.25rem); font-weight: 640; letter-spacing: -0.03em; line-height: 1.12; }
+  .head p { margin: 0.875rem 0 0; font-size: 0.9375rem; line-height: 1.7; color: var(--pg-mut); text-wrap: pretty; }
+  .head p b { color: var(--pg-fg); font-weight: 560; }
+
+  .bar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center;
+    padding: 0.75rem 0; margin-top: 1.25rem;
+    background: color-mix(in srgb, var(--pg) 92%, transparent);
+    backdrop-filter: blur(10px); border-block: 1px solid var(--pg-bd);
+  }
+  .ctl { display: flex; gap: 0.5rem; align-items: center; }
+  .ctl__l { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pg-mut); }
+  .seg { display: flex; border: 1px solid var(--pg-bd); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--pg-mut);
+    font: inherit; font-size: 0.75rem; font-weight: 550; padding: 0.375rem 0.7rem; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--pg-bd); }
+  .seg button[aria-pressed="true"] { color: #fff; background: var(--pg-accent); }
+
+  .sec { padding-top: 2.75rem; }
+  .sec h2 { margin: 0 0 0.5rem; font-size: 1.125rem; font-weight: 620; letter-spacing: -0.02em; }
+  .sec > p { margin: 0 0 1.75rem; max-width: 52rem; font-size: 0.875rem; line-height: 1.7; color: var(--pg-mut); text-wrap: pretty; }
+  .sec > p b { color: var(--pg-fg); font-weight: 560; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 2rem 1.75rem; align-items: flex-start; }
+  .cell { display: grid; gap: 0.625rem; }
+  .cell__l { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pg-mut); }
+  .cell__m { font-size: 0.625rem; color: var(--pg-mut); opacity: .8; font-variant-numeric: tabular-nums; }
+
+  .frame > * { zoom: var(--z); }
+
+  .foot { margin-top: 3.5rem; padding-top: 1.75rem; border-top: 1px solid var(--pg-bd); max-width: 48rem; }
+  .foot h2 { margin: 0 0 0.875rem; font-size: 1.0625rem; font-weight: 620; letter-spacing: -0.02em; }
+  .foot h2 + h2 { margin-top: 2rem; }
+  .foot p { margin: 0 0 0.75rem; font-size: 0.875rem; line-height: 1.7; color: var(--pg-mut); text-wrap: pretty; }
+  .foot b { color: var(--pg-fg); font-weight: 560; }
+  .foot code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875em; color: var(--pg-fg); }
+  .foot ol, .foot ul { margin: 0 0 0.75rem; padding-left: 1.25rem; font-size: 0.875rem; line-height: 1.75; color: var(--pg-mut); }
+  .foot li b { color: var(--pg-fg); }
+
+  @media (max-width: 560px) { .row { flex-direction: column; } }
+
+  /* ==========================================================
+     HeroUI token —— 与「HeroUI 方向」那份稿逐值一致
+     ========================================================== */
+  .hu {
+    --background: #ffffff;
+    --foreground: #11181c;
+    --content1: #ffffff;
+    --content2: #f4f4f5;
+    --default-100: #f4f4f5;
+    --default-200: #e4e4e7;
+    --default-300: #d4d4d8;
+    --default-400: #a1a1aa;
+    --default-500: #71717a;
+    --default-600: #52525b;
+    --divider: rgba(17, 17, 17, 0.11);
+
+    --primary: #006fee;
+    --primary-foreground: #ffffff;
+    --success: #17c964;
+    --warning: #f5a524;
+    --danger: #f31260;
+    --low: #f3730e;
+
+    --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-full: 999px;
+    --shadow-md: 0 2px 10px rgba(17,17,17,.06), 0 0 0 1px rgba(17,17,17,.03);
+
+    background: var(--background);
+    color: var(--foreground);
+    font-size: 15px;
+    line-height: 1.45;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  }
+
+  .hu[data-t="dark"] {
+    --background: #000000;
+    --foreground: #ecedee;
+    --content1: #18181b;
+    --content2: #27272a;
+    --default-100: #27272a;
+    --default-200: #3f3f46;
+    --default-300: #52525b;
+    --default-400: #71717a;
+    --default-500: #a1a1aa;
+    --default-600: #d4d4d8;
+    --divider: rgba(255, 255, 255, 0.13);
+
+    --primary: #338ef7;
+    --primary-foreground: #001731;
+    --success: #45d483;
+    --warning: #f5a524;
+    --danger: #f5455c;
+    --low: #ff8a3d;
+
+    --shadow-md: 0 2px 14px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05);
+  }
+
+  .hu p, .hu h1, .hu h2, .hu h3 { margin: 0; }
+  .hu button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; }
+  .hu :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) { .hu * { animation: none !important; transition: none !important; } }
+
+  /* --- 设备外壳 393 × 852（iPhone 16 逻辑分辨率） --- */
+  .dev {
+    width: 413px; height: 872px; padding: 10px;
+    background: #0a0a0b; border-radius: 55px;
+    box-shadow: 0 22px 50px -14px rgba(10, 12, 16, .38), 0 0 0 1px rgba(255,255,255,.08) inset;
+  }
+  .dev__scr { width: 393px; height: 852px; border-radius: 45px; overflow: hidden; position: relative; }
+
+  /* --- 状态栏 + 灵动岛 --- */
+  .msys {
+    height: 54px; padding: 14px 32px 0; display: flex; align-items: center;
+    font-size: 15px; font-weight: 640; letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+    position: relative; z-index: 3;
+  }
+  .msys__r { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 124px; height: 36px; border-radius: var(--r-full); background: #000; z-index: 4;
+  }
+
+  /* --- 应用外壳 --- */
+  .mapp { height: 852px; display: flex; flex-direction: column; background: var(--content2); }
+  .hu[data-t="dark"] .mapp { background: #000; }
+
+  .mhd { padding: 6px 20px 14px; display: flex; align-items: flex-end; gap: 10px; flex: 0 0 auto; }
+  .mhd__h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.1; }
+  .mhd__sub { margin-top: 3px !important; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--default-500); font-variant-numeric: tabular-nums; }
+  .mhd__acts { margin-left: auto; display: flex; gap: 2px; padding-bottom: 2px; }
+
+  .mtap { width: 44px; height: 44px; border-radius: var(--r-full); display: grid; place-items: center; color: var(--default-600); }
+  .mtap:active { background: var(--default-100); }
+
+  .mbody { flex: 1; min-height: 0; overflow: hidden; padding: 0 16px; display: grid; align-content: start; gap: 12px; }
+
+  .mft { flex: 0 0 auto; padding: 12px 20px 0; font-size: 11px; color: var(--default-400); text-align: center; }
+  .mbar { flex: 0 0 auto; height: 34px; display: grid; place-items: end center; padding-bottom: 9px; }
+  .mbar span { width: 140px; height: 5px; border-radius: var(--r-full); background: var(--foreground); opacity: .28; }
+
+  /* --- 下拉刷新 --- */
+  .mpull { display: flex; align-items: center; justify-content: center; gap: 8px; height: 34px; font-size: 12.5px; color: var(--default-500); }
+  /* 退避期内下拉：请求根本不发出去，得说清楚为什么 */
+  .mpull--held { color: var(--warning); font-weight: 600; }
+  .mspin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--default-200); border-top-color: var(--primary); animation: msp .8s linear infinite; }
+  @keyframes msp { to { transform: rotate(360deg); } }
+
+  /* --- 额度卡 --- */
+  .mcard { background: var(--content1); border-radius: var(--r-lg); box-shadow: var(--shadow-md); padding: 16px 17px 17px; }
+
+  .mcard__hd { display: flex; align-items: center; gap: 8px; }
+  .mcard__nm { font-size: 18px; font-weight: 680; letter-spacing: -0.015em; }
+  .mcard__acct { margin-left: auto !important; font-size: 12px; color: var(--default-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
+
+  .mchip {
+    display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-full);
+    background: var(--default-100); color: var(--default-600); font-size: 12px; font-weight: 620;
+  }
+
+  .mcard__read { display: flex; align-items: baseline; gap: 9px; margin-top: 14px; }
+  .mcard__pct { font-size: 38px; font-weight: 700; letter-spacing: -0.04em; line-height: .95; font-variant-numeric: tabular-nums; }
+  .mcard__win { font-size: 13px; color: var(--default-500); }
+  .mcard__rst { margin-left: auto; font-size: 13px; color: var(--default-500); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .mprog { border-radius: var(--r-full); background: var(--default-100); overflow: hidden; }
+  .mprog__i { height: 100%; border-radius: var(--r-full); }
+  .mprog--main { height: 10px; margin-top: 13px; }
+  .mprog--sub { height: 5px; }
+
+  .msub { display: flex; align-items: center; gap: 10px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed var(--divider); }
+  .msub + .msub { margin-top: 10px; padding-top: 10px; }
+  .msub__n { font-size: 12.5px; color: var(--default-500); flex: 0 0 auto; }
+  .msub__b { flex: 1; min-width: 24px; }
+  .msub__p { font-size: 12.5px; font-weight: 660; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .msub__r { font-size: 12px; color: var(--default-500); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+
+  .mempty { font-size: 13px; color: var(--default-500); margin-top: 13px !important; }
+
+  /* --- 未生效的子窗口：不上四档色，百分比换成 --- */
+  .msub--off .msub__n, .msub--off .msub__p, .msub--off .msub__r { color: var(--default-400); }
+
+  /* --- 重置次数：独立接口，独立失败，所以不跟子窗口共用行样式 --- */
+  .mcredit { display: flex; align-items: center; gap: 8px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--divider); }
+  .mcredit__ic { width: 22px; height: 22px; border-radius: var(--r-full); background: var(--default-100); color: var(--default-500); display: grid; place-items: center; flex: 0 0 auto; }
+  .mcredit__n { font-size: 12.5px; color: var(--default-500); }
+  .mcredit__v { font-size: 13.5px; font-weight: 660; font-variant-numeric: tabular-nums; }
+  .mcredit__x { margin-left: auto; font-size: 12px; color: var(--default-500); font-variant-numeric: tabular-nums; }
+
+  /* --- 提示条：移动端把「下一步」做成可点的按钮 --- */
+  .malert { border-radius: var(--r-md); padding: 12px 13px; display: flex; gap: 10px; background: color-mix(in srgb, var(--tint) 12%, var(--content1)); margin-top: 14px; }
+  .malert__ic { flex: 0 0 auto; width: 24px; height: 24px; border-radius: var(--r-full); background: color-mix(in srgb, var(--tint) 24%, var(--content1)); color: var(--tint); display: grid; place-items: center; }
+  .malert__b { display: grid; gap: 4px; min-width: 0; flex: 1; }
+  .malert__t { font-size: 13.5px; font-weight: 700; color: var(--tint); }
+  .malert__d { font-size: 13px; line-height: 1.5; color: var(--default-600); }
+
+  .mbtn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 44px; padding: 0 18px; border-radius: var(--r-md);
+    font-size: 15px; font-weight: 640; white-space: nowrap;
+    transition: transform .15s ease, opacity .15s ease;
+  }
+  .mbtn:active { transform: scale(.98); }
+  /* 变体一律带 .hu 前缀，否则会被上面 `.hu button` 的背景重置压过去 */
+  .hu .mbtn--solid { background: var(--primary); color: var(--primary-foreground); box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--primary) 60%, transparent); }
+  .hu .mbtn--tint { background: color-mix(in srgb, var(--tint) 20%, var(--content1)); color: var(--tint); }
+  .mbtn--sm { height: 36px; padding: 0 14px; font-size: 13.5px; border-radius: var(--r-sm); justify-self: start; margin-top: 2px; }
+  .mbtn--wide { width: 100%; }
+
+  /* --- 状态点 --- */
+  .mdot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .mdot--live { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent); animation: mpulse 2.4s ease-in-out infinite; }
+  .mdot--stale { background: var(--warning); }
+  .mdot--off { background: var(--default-400); }
+  @keyframes mpulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+  /* --- 骨架 --- */
+  .mskel { border-radius: 7px; background: var(--default-200); animation: msk 1.6s ease-in-out infinite; }
+  @keyframes msk { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+  /* --- 首次启动引导 --- */
+  /* 引导页贴底：上半屏留白，拇指够得到的地方放按钮 */
+  .monb { flex: 1; min-height: 0; padding: 0 24px 6px; display: grid; align-content: end; justify-items: start; gap: 12px; }
+  .monb__mk { width: 46px; height: 46px; border-radius: var(--r-md); background: color-mix(in srgb, var(--primary) 14%, var(--content1)); color: var(--primary); display: grid; place-items: center; margin-bottom: 6px; }
+  .monb__h { font-size: 25px; font-weight: 700; letter-spacing: -0.032em; line-height: 1.2; }
+  .monb__d { font-size: 14.5px; line-height: 1.65; color: var(--default-500); }
+  .monb__acts { margin-top: 12px; display: grid; gap: 10px; width: 100%; }
+  .hu .monb__or { border: 1px solid var(--divider); background: var(--content1); color: var(--foreground); }
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <span class="eyebrow">移动端 · 状态原型</span>
+    <h1>手机上的那一屏</h1>
+    <p>
+      移动端就是桌面端 popover 的内容<b>撑满一整屏</b>：同样的四档语义色、同样的三级解释。
+      视觉方向是 <b>HeroUI</b>，与桌面端 ADR-0012 一致——14–18px 圆角、阴影撑层级、tint 底色的提示条。
+      下面 9 屏都是 393 × 852（iPhone 16 逻辑分辨率）。
+    </p>
+    <p>
+      <b>数据形态按 <code>docs/移动端额度展示要求.md</code> 定的范围，不再沿用桌面合成数据。</b>
+      三处关键差异：Codex <b>只有周窗口</b>（Provider 侧已取消 5 小时），因此没有子窗口行；
+      Codex 卡片底部多一行<b>重置次数</b>；Claude 的<b>模型级窗口只有 Max 能看到</b>，Pro 没有。
+    </p>
+  </header>
+
+  <div class="bar">
+    <div class="ctl">
+      <span class="ctl__l">应用主题</span>
+      <div class="seg" id="seg-t">
+        <button type="button" data-v="light" aria-pressed="true">浅色</button>
+        <button type="button" data-v="dark" aria-pressed="false">深色</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="ctl__l">缩放</span>
+      <div class="seg" id="seg-z">
+        <button type="button" data-v="0.56" aria-pressed="true">56%</button>
+        <button type="button" data-v="0.78" aria-pressed="false">78%</button>
+        <button type="button" data-v="1" aria-pressed="false">100%</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="ctl__l">is_active:false 文案</span>
+      <div class="seg" id="seg-o">
+        <button type="button" data-v="不适用" aria-pressed="true">不适用</button>
+        <button type="button" data-v="未开始" aria-pressed="false">未开始</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="ctl__l">展示台</span>
+      <div class="seg" id="seg-p">
+        <button type="button" data-v="light" aria-pressed="true">浅</button>
+        <button type="button" data-v="dark" aria-pressed="false">深</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec">
+    <h2>9 种状态</h2>
+    <p>
+      注意 <b>01 里两张卡明显不等高</b>——Codex 只有一个周窗口，Claude 有 5 小时加每周两条。
+      这是真实形态，<b>不拉平</b>：拉平意味着给 Codex 造一个不存在的窗口，或者压缩 Claude 的真实信息。
+      <b>05 退避中</b>和 <b>03 模型级窗口</b>是这一版新增的，理由见下方说明。
+    </p>
+    <div class="row" id="row"></div>
+  </section>
+
+  <footer class="foot">
+    <h2>跟桌面 popover 比，改了什么</h2>
+    <ol>
+      <li><b>动作从 4 个减到 2 个</b>：桌面的「打开 CC Trace 主窗口」和「退出」在手机上不存在，顶部只剩刷新和设置，各占 44 × 44 的触控区。</li>
+      <li><b>刷新主要靠下拉</b>：顶部那颗刷新按钮只是兜底，正在刷新时它换成转圈，同时顶部露出一行「正在刷新」。</li>
+      <li><b>「下一步」变成按钮</b>：桌面写「在 Codex CLI 重新登录后刷新」，因为动作发生在另一个程序里；手机上重新登录这件事就在应用内，所以提示条末尾直接给一颗 <b>重新登录</b> 按钮。这是两端唯一真正的语义分叉。</li>
+      <li><b>读数放大</b>：百分比从 23px 提到 38px，主进度条从 8px 提到 10px——手机是一眼扫，不是凑近看。</li>
+      <li><b>卡片留白加大</b>：圆角 14 → 18px，内边距 12 → 16px，两张卡之间 12px，撑满一屏后底部还剩空间，不用滚动。</li>
+      <li><b>设置图标换了</b>：桌面那颗「圆心 + 八根辐条」的齿轮，放到 19px 会被读成亮度调节，这里换成滑杆。<b>桌面稿在 14px 下问题只会更重，建议一起换。</b></li>
+    </ol>
+
+    <h2>这一版新增的三处</h2>
+    <ol>
+      <li>
+        <b>重置次数</b>（Codex 卡片底部）。它来自<b>另一个接口</b>
+        <code>/wham/rate-limit-reset-credits</code>，所以画成独立一行、有自己的失败态：
+        看 <b>06</b>，Codex 登录失效时这一行是 <code>--</code>，而不是整张卡消失。
+        官方明确说过它<b>不是钱</b>，是攒下来的重置次数，因此不用货币符号。
+      </li>
+      <li>
+        <b>退避中下拉被拒绝</b>（05）。<code>/api/oauth/usage</code> 的 429 很凶，
+        有人报告到「usage monitoring unusable」的程度。所以下拉<b>必须能被拒绝</b>——
+        转一圈再失败是最糟的表达，不如一开始就说清楚还要等多久。
+      </li>
+      <li>
+        <b>模型级窗口</b>（03）。Pro 看不到，Max 才有。逻辑必须在，
+        不能因为当前账号看不到就不实现。
+      </li>
+    </ol>
+
+    <h2><code>is_active: false</code> 的文案还没定 ⚠️</h2>
+    <p>
+      看 <b>03</b> 里的 Fable 那一行，用顶部的开关切换两种文案。这不是排版偏好，
+      <b>两种解释给用户的判断是相反的</b>：
+    </p>
+    <ol>
+      <li><b>不适用</b>——你的计划里没有这个模型，这行是噪音，也许该整行隐藏</li>
+      <li><b>未开始</b>——窗口还没开始计时，额度是<b>满的</b>，这是好消息</li>
+    </ol>
+    <p>
+      两者在响应里长得一样（都是 0% + 无重置时间），光看 JSON 区分不了。
+      稿子里<b>先按「不适用」画</b>，但没有定论——等 Q4 拿到真实响应再定。
+      同理，百分比这里显示 <code>--</code> 而不是 <code>0%</code>：
+      <b>0% 会被读成额度耗尽</b>，那是四种解释里最糟的一种。
+    </p>
+
+    <h2>一个没解决的问题：下半屏是空的</h2>
+    <p>
+      两张卡撑不满 852，<b>而且这一版更空了</b>——Codex 少了一整条子窗口行。
+      <b>这份稿子仍然选择让它空着</b>：空白本身在说「就这么多，没别的了」，
+      而且空白正好是下拉刷新的手势区。
+      替代方案是<b>把卡片撑高</b>（读数更大、行距更松），或者<b>补一块 24 小时用量曲线</b>。
+      后者是加功能不是排版，得单独决定——而且按 §6 的 429 结论，
+      <b>用量曲线要求更高频的采样，很可能根本拿不到数据</b>。
+    </p>
+
+    <h2>没有底部标签栏</h2>
+    <p>
+      只有一屏内容，加标签栏是为了填空。设置走右上角图标推一个模态页，这样主屏永远只表达一件事：
+      <b>还剩多少</b>。等真出现了第二个同级页面（比如用量历史），再谈标签栏。
+    </p>
+
+    <h2>视觉方向：HeroUI，两端一致</h2>
+    <p>
+      桌面端已由 <b>ADR-0012</b> 把视觉方向定为 HeroUI 风格，<code>src/styles/tokens.css</code> 已落地。
+      移动端<b>沿用同一套 token</b>，本稿的色值与桌面端逐值一致。
+    </p>
+    <p>
+      四档语义色里的 <code>--low: #f3730e</code>（浅色）/ <code>#ff8a3d</code>（深色）确实<b>不是
+      HeroUI 官方值</b>——官方只有 primary / success / warning / danger / default 五个，
+      没有介于 warning 与 danger 之间的这一档。但它<b>已由桌面端 ADR-0017 正式采纳</b>，
+      不是悬而未决的自造值，移动端直接沿用即可。
+    </p>
+
+    <h2>这只是稿子</h2>
+    <p>
+      纯 HTML/CSS，<b>没有碰仓库里任何应用代码</b>。OAuth 可行性验证的 Q1、Q2 已通过
+      （2026-07-28），<b>登录不存在协议层面的不可行</b>，所以 08 那两颗登录按钮不再是无源之水。
+      但 Q3（真机 loopback）和 Q4（换到的 token 能否调通 usage）还没做，
+      <b>四个问题全部通过之前不开始实现</b>。
+    </p>
+    <p>
+      稿子里还有三处等 Q4 才能定死：<code>is_active</code> 的文案、重置次数的真实形态
+      （<code>availableCount</code> 是不是整数、没有 credit 时长什么样）、以及退避的真实间隔——
+      「1 分钟后可再试」是占位数字，不是实测值。
+    </p>
+    <p>所有数值都是合成数据，不来自 Codex 或 Claude Code。</p>
+  </footer>
+</div>
+
+<script>
+  "use strict";
+
+  function tone(pct) {
+    if (pct === null) return "default";
+    if (pct === 0) return "danger";
+    if (pct < 20) return "low";
+    if (pct <= 50) return "warning";
+    return "ok";
+  }
+  function toneVar(t) { return t === "ok" ? "foreground" : t; }
+
+  const ico = {
+    refresh: `<svg viewBox="0 0 16 16" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 8a5.4 5.4 0 1 1-1.7-3.95"/><path d="M13.6 2.2v2.9h-2.9"/></svg>`,
+    /* 桌面稿那颗「圆心 + 八根辐条」的齿轮在 19px 下会被读成亮度调节，这里换成滑杆 */
+    gear: `<svg viewBox="0 0 16 16" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 5h3.2M8.3 5h5.2M2.5 11h5.2M10.3 11h3.2"/><circle cx="7" cy="5" r="1.6"/><circle cx="9" cy="11" r="1.6"/></svg>`,
+    warn: `<svg viewBox="0 0 14 14" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1.8 13 12.2H1z"/><path d="M7 5.6v2.8M7 10.3v.1"/></svg>`,
+    gauge: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4.2-5"/></svg>`,
+    credit: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8A6 6 0 1 1 8 2"/><path d="M14 2.6v3.2h-3.2"/><path d="M8 5.4V8l1.9 1.1"/></svg>`,
+    wifi: `<svg viewBox="0 0 16 12" width="16" height="12" fill="currentColor"><path d="M8 10.6 6.2 8.5a2.7 2.7 0 0 1 3.6 0L8 10.6Zm0-4.3a4.6 4.6 0 0 0-3.1 1.2L3.6 6.1a6.5 6.5 0 0 1 8.8 0l-1.3 1.4A4.6 4.6 0 0 0 8 6.3Zm0-3.6a8.3 8.3 0 0 0-5.6 2.2L1.1 3.5a10.2 10.2 0 0 1 13.8 0l-1.3 1.4A8.3 8.3 0 0 0 8 2.7Z"/></svg>`,
+    cell: `<svg viewBox="0 0 18 12" width="17" height="12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1" opacity=".35"/></svg>`,
+    batt: `<svg viewBox="0 0 27 13" width="26" height="12" fill="none"><rect x=".5" y=".5" width="23" height="12" rx="4" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="15" height="8" rx="2.2" fill="currentColor"/><path d="M25.2 4.6c.9.4.9 3.4 0 3.8V4.6Z" fill="currentColor" opacity=".4"/></svg>`,
+  };
+
+  /* 合成数据。形态按 docs/移动端额度展示要求.md：
+     - Codex 目前只有周窗口（Provider 侧取消了 5 小时），所以没有子窗口行
+     - Claude pro 看不到模型级窗口；max 才有 Opus / Fable */
+  const CLAUDE_PRO_SUBS = [{ n: "每周窗口", p: 55, r: "周三 00:00" }];
+  const CLAUDE_MAX_SUBS = [
+    { n: "每周窗口", p: 55, r: "周三 00:00" },
+    { n: "Opus 每周", p: 23, r: null },
+    { n: "Fable 每周", p: 0, r: null, off: true },
+  ];
+
+  const codexOk = {
+    name: "Codex", plan: "Plus", acct: "na•••@gmail.com",
+    pct: 59, win: "每周窗口", reset: "周一 09:00 重置",
+    credit: { n: 3, x: "最早 8/4 过期" },
+  };
+  const claudeOk = {
+    name: "Claude Code", plan: "Pro", acct: "na•••@gmail.com",
+    pct: 78, win: "5 小时窗口", reset: "4 小时后重置", subs: CLAUDE_PRO_SUBS,
+  };
+
+  const STATES = [
+    {
+      id: "ok", label: "两个都正常", dot: "live", sub: "1 分钟前刷新",
+      lanes: [codexOk, claudeOk],
+    },
+    {
+      id: "low", label: "Codex 周额度仅剩 15%", dot: "live", sub: "1 分钟前刷新",
+      lanes: [{ ...codexOk, pct: 15 }, claudeOk],
+    },
+    {
+      id: "max", label: "Claude Max · 模型级窗口", dot: "live", sub: "1 分钟前刷新",
+      lanes: [codexOk, { ...claudeOk, plan: "Max", subs: CLAUDE_MAX_SUBS }],
+    },
+    {
+      id: "refreshing", label: "下拉刷新中", dot: "live", sub: "1 分钟前刷新", pull: "loading",
+      lanes: [codexOk, claudeOk],
+    },
+    {
+      id: "held", label: "退避中 · 下拉被拒绝", dot: "live", sub: "40 秒前刷新", pull: "held",
+      lanes: [codexOk, claudeOk],
+    },
+    {
+      id: "stale", label: "Codex 登录失效 · 保留旧值", dot: "stale", sub: "43 分钟前刷新",
+      lanes: [{
+        ...codexOk, reset: "43 分钟前的数据", stale: true, credit: { n: null },
+        expl: { tone: "danger", t: "登录已失效", i: "现在显示的是 43 分钟前的数据，不是最新额度。", cta: "重新登录 Codex" },
+      }, claudeOk],
+    },
+    {
+      id: "none", label: "Codex 未登录", dot: "live", sub: "1 分钟前刷新",
+      lanes: [
+        { name: "Codex", acct: "未登录", pct: null, win: "每周窗口", empty: "登录后才能读到额度", expl: { tone: "low", t: "还没登录 Codex", cta: "登录 Codex" } },
+        claudeOk,
+      ],
+    },
+    {
+      id: "onboard", label: "首次启动 · 两个都没登录", onboard: true,
+    },
+    {
+      id: "loading", label: "首次加载", dot: "off", sub: "尚未成功刷新", skeleton: true,
+    },
+  ];
+
+  /* `off` = is_active:false。不上四档色、百分比换成 --，因为 0% 会被读成额度耗尽。
+     `r` 为 null = resets_at 缺失且无旧值可沿用，必须写明未知，不能留空。 */
+  function subRow(s, stale) {
+    if (s.off) {
+      return `<div class="msub msub--off">
+        <span class="msub__n">${s.n}</span>
+        <div class="mprog mprog--sub msub__b"></div>
+        <span class="msub__p">--</span>
+        <span class="msub__r">${OFF_LABEL}</span>
+      </div>`;
+    }
+    const v = toneVar(stale ? "default" : tone(s.p));
+    const bg = v === "foreground" ? "default-400" : v;
+    return `<div class="msub">
+      <span class="msub__n">${s.n}</span>
+      <div class="mprog mprog--sub msub__b"><div class="mprog__i" style="width:${s.p}%;background:var(--${bg})"></div></div>
+      <span class="msub__p" style="color:var(--${v})">${s.p}%</span>
+      <span class="msub__r">${s.r ?? "重置时间未知"}</span>
+    </div>`;
+  }
+
+  function creditRow(c) {
+    return `<div class="mcredit">
+      <span class="mcredit__ic">${ico.credit}</span>
+      <span class="mcredit__n">重置次数</span>
+      ${c.n === null
+        ? `<span class="mcredit__v" style="color:var(--default-400)">--</span>`
+        : `<span class="mcredit__v">${c.n} 次可用</span><span class="mcredit__x">${c.x}</span>`}
+    </div>`;
+  }
+
+  function card(l) {
+    const v = toneVar(l.stale ? "default" : tone(l.pct));
+    const has = l.pct !== null;
+    const subs = (l.subs ?? []).map((s) => subRow(s, l.stale)).join("");
+    const e = l.expl;
+
+    return `<section class="mcard">
+      <div class="mcard__hd">
+        <h2 class="mcard__nm">${l.name}</h2>
+        ${l.plan ? `<span class="mchip">${l.plan}</span>` : ""}
+        ${l.acct ? `<span class="mcard__acct">${l.acct}</span>` : ""}
+      </div>
+      ${has ? `
+        <div class="mcard__read">
+          <span class="mcard__pct" style="color:var(--${v})">${l.pct}%</span>
+          <span class="mcard__win">${l.win}</span>
+          <span class="mcard__rst">${l.reset}</span>
+        </div>
+        <div class="mprog mprog--main"><div class="mprog__i" style="width:${l.pct}%;background:var(--${v})"></div></div>
+      ` : `
+        <div class="mcard__read">
+          <span class="mcard__pct" style="color:var(--default-400)">--</span>
+          <span class="mcard__win">${l.win}</span>
+        </div>
+        <p class="mempty">${l.empty}</p>
+      `}
+      ${subs}
+      ${l.credit ? creditRow(l.credit) : ""}
+      ${e ? `<div class="malert" style="--tint:var(--${e.tone})">
+        <span class="malert__ic">${ico.warn}</span>
+        <div class="malert__b">
+          <p class="malert__t">${e.t}</p>
+          ${e.i ? `<p class="malert__d">${e.i}</p>` : ""}
+          <button class="mbtn mbtn--tint mbtn--sm" style="--tint:var(--${e.tone})">${e.cta}</button>
+        </div>
+      </div>` : ""}
+    </section>`;
+  }
+
+  function skeletonCard(name) {
+    return `<section class="mcard">
+      <div class="mcard__hd">
+        <h2 class="mcard__nm">${name}</h2>
+        <span class="mskel" style="width:44px;height:22px;border-radius:999px"></span>
+      </div>
+      <div class="mcard__read">
+        <span class="mcard__pct" style="color:var(--default-400)">--</span>
+        <span class="mcard__win">5 小时窗口</span>
+      </div>
+      <div class="mskel mprog--main" style="width:100%"></div>
+      <p class="mempty">正在检查额度</p>
+    </section>`;
+  }
+
+  function sysbar() {
+    return `<div class="island"></div>
+    <div class="msys">
+      <span>9:41</span>
+      <span class="msys__r">${ico.cell}${ico.wifi}${ico.batt}</span>
+    </div>`;
+  }
+
+  function screen(s, t) {
+    let body;
+    if (s.onboard) {
+      body = `<div class="monb">
+        <span class="monb__mk">${ico.gauge}</span>
+        <h1 class="monb__h">先登录，<br>才能看到额度</h1>
+        <p class="monb__d">CC Trace 只读取用量数据，不发起对话、不碰你的代码。登录信息存在这台手机上。</p>
+        <div class="monb__acts">
+          <button class="mbtn mbtn--solid mbtn--wide">登录 Codex</button>
+          <button class="mbtn mbtn--wide monb__or">登录 Claude Code</button>
+        </div>
+      </div>
+      <p class="mft">两个可以只登一个，之后在设置里补另一个</p>`;
+    } else if (s.skeleton) {
+      body = `<div class="mbody">${skeletonCard("Codex")}${skeletonCard("Claude Code")}</div>
+      <p class="mft">合成数据 · 不来自 Codex 或 Claude Code</p>`;
+    } else {
+      const pull = s.pull === "loading"
+        ? `<div class="mpull"><span class="mspin"></span>正在刷新</div>`
+        : s.pull === "held"
+          ? `<div class="mpull mpull--held">${ico.warn}刚刷新过，1 分钟后可再试</div>`
+          : "";
+      body = `<div class="mbody">
+        ${pull}
+        ${s.lanes.map(card).join("")}
+      </div>
+      <p class="mft">合成数据 · 不来自 Codex 或 Claude Code</p>`;
+    }
+
+    const header = s.onboard ? "" : `<header class="mhd">
+      <div>
+        <h1 class="mhd__h1">用量</h1>
+        <p class="mhd__sub"><span class="mdot mdot--${s.dot}"></span>${s.sub}</p>
+      </div>
+      <div class="mhd__acts">
+        <button class="mtap" aria-label="刷新">${s.pull === "loading" ? `<span class="mspin"></span>` : ico.refresh}</button>
+        <button class="mtap" aria-label="设置">${ico.gear}</button>
+      </div>
+    </header>`;
+
+    const onboardHead = s.onboard ? `<header class="mhd"><div></div><div class="mhd__acts"><button class="mtap" aria-label="设置">${ico.gear}</button></div></header>` : "";
+
+    return `<div class="hu dev" data-t="${t}">
+      <div class="dev__scr">
+        <div class="mapp">
+          ${sysbar()}
+          ${header}${onboardHead}
+          ${body}
+          <div class="mbar"><span></span></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  let theme = "light";
+  let zoom = 0.56;
+  /* is_active:false 的文案未定，两种解释给用户的判断相反。这里做成可切换，
+     等 Q4 验证出真实语义再定死一个。见 docs/移动端额度展示要求.md §4.2 */
+  let OFF_LABEL = "不适用";
+
+  function render() {
+    document.getElementById("row").innerHTML = STATES.map((s, i) => `
+      <div class="cell">
+        <span class="cell__l">${String(i + 1).padStart(2, "0")} ${s.label}</span>
+        <div class="frame" style="--z:${zoom}">${screen(s, theme)}</div>
+        <span class="cell__m">393 × 852</span>
+      </div>`).join("");
+  }
+
+  function bindSeg(id, apply, initial) {
+    const root = document.getElementById(id);
+    const set = (v) => {
+      root.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+      apply(v);
+    };
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b) set(b.dataset.v);
+    });
+    set(initial);
+  }
+
+  const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+  bindSeg("seg-t", (v) => { theme = v; render(); }, prefersDark ? "dark" : "light");
+  bindSeg("seg-z", (v) => { zoom = Number(v); render(); }, "0.56");
+  bindSeg("seg-o", (v) => { OFF_LABEL = v; render(); }, "不适用");
+  bindSeg("seg-p", (v) => { document.documentElement.dataset.theme = v; }, prefersDark ? "dark" : "light");
+</script>
+</body>
+</html>
