@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Rust
+target/
+
+# Tauri 移动端生成物：由 `tauri android init` / `tauri ios init` 重新生成，不入库
+src-tauri/gen/
+
+# Android
+.gradle/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# iOS / Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+Pods/
+*.ipa
+
+# 凭据与真实响应：任何情况下都不得入库
+*.p8
+*.p12
+*.mobileprovision
+secrets.*
+.env
+.env.*
+!.env.example
+fixtures/raw/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.sw?
