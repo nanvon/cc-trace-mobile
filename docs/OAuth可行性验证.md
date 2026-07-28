@@ -1,6 +1,6 @@
 # OAuth 可行性验证
 
-> 状态：**Q1、Q2 已通过（2026-07-28，macOS 命令行 + 浏览器）；Q3、Q4 未开始**
+> 状态：**Q1、Q2 与 Q4 基线已通过（2026-07-28，macOS 命令行 + 浏览器）；Q3 未开始，Q4 的 scope / 限流 / `is_active` 补充实验进行中**
 > 这是启动 CC Trace Mobile 之前必须先完成的事。结论出来之前不写界面。
 
 ## 为什么这件事排在最前面
@@ -367,6 +367,29 @@ jq -r 'paths(scalars)|join(".")' fixtures/raw/codex-usage.json | sort
 | usage 4xx 且 `account_id: present` | scope 不足 | 回 Q2 加 scope，重走授权 |
 | usage 200 但出现新 key | 移动端 scope 与桌面端不同 | 不算失败，记录差异后继续 |
 
+#### 4.8 基线验证记录
+
+**通过（2026-07-28，macOS）。** 两个 Provider 都完成了系统浏览器授权、loopback 回调、
+code 换 token 与 usage 请求，usage 均返回 HTTP 200 且是 JSON。
+
+- Codex：token 响应含 `access_token`、`refresh_token`、`id_token`；`chatgpt_account_id`
+  可从 access token 的 claim 解出。说明移动端不依赖 `auth.json` 也能构造
+  `ChatGPT-Account-Id` 请求头。
+- Claude：跨 `claude.com` authorize 与 `platform.claude.com` token endpoint 的组合成立；
+  token 响应含 access / refresh token。access token 不是 JWT，因此没有可记录的 `exp` claim。
+- 两份完整 usage 响应与去除 `Set-Cookie` 的响应头仅本地保留在 `fixtures/raw/`（权限 `0600`），
+  文件名与完整 scope 见 [`fixtures/采集记录.md`](../fixtures/采集记录.md)。token 响应只记录字段
+  结构与字符串长度，未落盘任何值。
+
+字段路径比对发现桌面端现有 fixture 是人工构造的子集：Codex 还返回 `credits`、
+`rate_limit_reset_credits` 等字段；Claude 还返回 `extra_usage`、`spend` 以及动态窗口的
+`group` / `severity` 元数据。根据 4.7，这不是 Q4 失败，但 S4 必须以本次完整响应的结构为准，
+不能只假定桌面端手写 fixture 覆盖完整协议。
+
+**尚未完成：**最小 scope 削减、5 小时后的 Claude `is_active` 复测、429 / `Retry-After`
+限流试探，以及人工白名单脱敏后是否将 fixture 纳入版本库。最后一项会产生账号实际额度数据；
+在明确同意前，只保留 Git 忽略的本地原始证据，不向 `fixtures/providers/` 写入真实数值。
+
 ## 验证方式
 
 先用**最小脚本**验证，不要在 Tauri 工程里做。Q1 和 Q2 完全可以在桌面命令行上跑通（loopback 在哪都一样），确认协议层可行之后，Q3 才需要真机。
@@ -448,7 +471,7 @@ Redirect URI cctrace://callback is not supported by client.
 
 ## 结论
 
-> **Q1、Q2 通过（2026-07-28，macOS）；Q3、Q4 未开始。**
+> **Q1、Q2 与 Q4 基线通过（2026-07-28，macOS）；Q3 未开始，Q4 补充实验进行中。**
 > 四个问题全部通过之前，不开始界面实现。
 
 协议层已经跑通：两个 Provider 都能用官方 CLI 的 client_id 构造出被接受的 authorize
@@ -479,7 +502,8 @@ Redirect URI cctrace://callback is not supported by client.
 | Q1 拿到 code | 2026-07-28 | macOS | 本机 loopback server + 用户本人账号真实登录 |
 | Q1 补测（scheme / IP 字面量） | 2026-07-28 | macOS | 同上，两项 Claude 侧均被拒 |
 | Q3 | — | iOS / Android 均未验证 | — |
-| Q4 | — | 未验证 | — |
+| Q4 基线 | 2026-07-28 | macOS | 系统浏览器 + 本机 loopback；两家 token / usage 均为 200，完整 usage 证据仅本地留存 |
+| Q4 补充实验 | — | macOS | 最小 scope、5 小时 `is_active`、429 限流均未完成 |
 
 验证过程中 authorization code 未被解析、未落盘、未换取 token；未读写本机
 `~/.codex` 与 `~/.claude` 的任何凭据。
