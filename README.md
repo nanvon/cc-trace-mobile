@@ -73,6 +73,11 @@ Android 构建见 [Android 正式签名与发布](docs/Android正式签名与发
 iOS 侧只支持用**免费 Apple ID** 自签安装，每 7 天需要重新签名一次——本项目不打算购买
 Apple 开发者账号，所以不会有 App Store 版本，也不会有 TestFlight。
 
+GitHub Actions 已配置为在 push `main` / Pull Request 时自动检查，并在推送与
+`pubspec.yaml` 版本匹配的 `v*` tag 后生成 Android Draft Release。iOS 会执行无签名 Release
+编译门禁，但不会产生可分发 IPA。配置与发布步骤见
+[GitHub 自动构建与发布](docs/GitHub自动构建与发布.md)。
+
 ## 目前的进度
 
 | 部分 | 状态 |
@@ -80,6 +85,7 @@ Apple 开发者账号，所以不会有 App Store 版本，也不会有 TestFlig
 | 主屏、登录、安全存储、刷新调度 | 代码已完成 |
 | 静态检查与自动化测试 | 已通过 |
 | Android Release APK 构建 | 已跑通 |
+| GitHub Actions 自动构建 | 已配置，尚未在 GitHub 首次运行 |
 | iOS 构建 | 被开发机的 Xcode 平台组件缺失阻塞 |
 | 真实账号 + 真机完整验证 | **未做** |
 

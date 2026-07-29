@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+
+jobs:
+  prepare:
+    name: Verify release version
+    runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag and application version
+        id: version
+        run: bash scripts/check_release_version.sh "${GITHUB_REF_NAME}"
+
+  ios:
+    name: Analyze, test and iOS compile
+    needs: prepare
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Compile iOS without code signing
+        run: flutter build ios --release --no-codesign
+
+  android:
+    name: Build signed Android APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Restore Android release signing key
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in \
+            ANDROID_RELEASE_KEYSTORE_BASE64 \
+            ANDROID_RELEASE_STORE_PASSWORD \
+            ANDROID_RELEASE_KEY_ALIAS \
+            ANDROID_RELEASE_KEY_PASSWORD
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::GitHub Actions Secret ${name} is not configured"
+              missing=1
+            fi
+          done
+          [[ "${missing}" -eq 0 ]]
+
+          store_file="${RUNNER_TEMP}/cc-trace-mobile-release.jks"
+          printf '%s' "${ANDROID_RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${store_file}"
+          chmod 600 "${store_file}"
+          echo "CC_TRACE_MOBILE_ANDROID_STORE_FILE=${store_file}" >> "${GITHUB_ENV}"
+
+      - name: Build and verify Android release
+        env:
+          CC_TRACE_MOBILE_ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          CC_TRACE_MOBILE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          CC_TRACE_MOBILE_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: ./scripts/build_android_release.sh
+
+      - name: Prepare release assets
+        env:
+          VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
+        run: |
+          mkdir -p release-assets
+          asset_name="CC-Trace-Mobile_${VERSION_NAME}_Android-arm64.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "release-assets/${asset_name}"
+          (
+            cd release-assets
+            sha256sum "${asset_name}" > "${asset_name}.sha256"
+          )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Create draft release
+    needs: [prepare, ios, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
+      VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release-assets
+          path: release-assets
+
+      - name: Create draft release and upload assets
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "CC Trace Mobile ${GITHUB_REF_NAME}" \
+              --notes "Android：正式签名 arm64 APK，versionCode ${VERSION_CODE}。iOS：无签名 Release 编译已通过；受免费 Apple ID 签名边界限制，不提供可分发 IPA。"
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber

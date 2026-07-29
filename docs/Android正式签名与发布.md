@@ -84,7 +84,15 @@ build/app/outputs/flutter-apk/app-release.apk.sha256
 ./scripts/verify_android_release.sh
 ```
 
-## 4. 备份与恢复
+## 4. GitHub 自动构建
+
+推送与 `pubspec.yaml` 中 `versionName` 完全匹配的 `v*` tag 后，GitHub Actions 会恢复正式
+keystore、执行同一个构建与验收脚本，并把 APK 和 SHA-256 上传到 Draft Release。
+
+GitHub Secrets 名称、tag 规则、iOS 无签名编译边界与首次启用验收见
+[GitHub 自动构建与发布](GitHub自动构建与发布.md)。
+
+## 5. 备份与恢复
 
 正式 key 必须使用加密恢复包备份至少两份，并存放在相互独立、访问受控的位置。恢复包、
 解密口令、具体备份位置和账户或钥匙串标识不得写入公开仓库。
