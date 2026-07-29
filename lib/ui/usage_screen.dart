@@ -317,8 +317,14 @@ class _ProviderCardState extends State<_ProviderCard>
     damping: 34.6410161514,
   );
 
-  late final AnimationController _expansion = AnimationController(vsync: this);
+  late final AnimationController _expansion;
   bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expansion = AnimationController(vsync: this);
+  }
 
   @override
   void didUpdateWidget(covariant _ProviderCard oldWidget) {

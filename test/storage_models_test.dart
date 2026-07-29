@@ -66,7 +66,7 @@ void main() {
   );
 
   test('credential schema remains compatible when fingerprint is absent', () {
-    final token = fakeToken(ProviderId.claude);
+    final token = fakeToken(ProviderId.claude, opaqueIdentity: false);
     final json = token.toJson()..remove('accountFingerprint');
 
     final restored = TokenBundle.fromJson(json);

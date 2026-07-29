@@ -104,6 +104,7 @@ void main() {
     final collapsedHeight = tester.getSize(card).height;
 
     await tester.tap(card);
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
     expect(tester.getSize(card).height, greaterThan(collapsedHeight));
 
