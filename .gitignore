@@ -3,6 +3,33 @@ logs
 *.log
 *.local
 
+# Flutter / Dart / Pub
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Flutter symbolication / obfuscation
+app.*.symbols
+app.*.map.json
+
+# Generated project metadata
+*.class
+*.pyc
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+*.iml
+*.ipr
+*.iws
+
 # Rust
 target/
 
@@ -13,6 +40,9 @@ local.properties
 *.aab
 *.keystore
 *.jks
+/android/app/debug
+/android/app/profile
+/android/app/release
 
 # iOS / Xcode
 xcuserdata/
