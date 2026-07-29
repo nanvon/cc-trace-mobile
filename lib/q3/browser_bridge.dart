@@ -2,35 +2,45 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-enum Q3BrowserEventType { cancelled, returned, failed }
+enum OAuthBrowserEventType { cancelled, returned, failed }
 
-class Q3BrowserEvent {
-  const Q3BrowserEvent(this.type, {this.category});
+class OAuthBrowserEvent {
+  const OAuthBrowserEvent(this.type, {this.category});
 
-  final Q3BrowserEventType type;
+  final OAuthBrowserEventType type;
   final String? category;
 }
 
-class Q3BrowserBridge {
-  Q3BrowserBridge() {
+abstract interface class BrowserLauncher {
+  Stream<OAuthBrowserEvent> get events;
+  Future<void> open(Uri authorizeUri);
+  Future<void> close();
+  Future<void> dispose();
+}
+
+class OAuthBrowserBridge implements BrowserLauncher {
+  OAuthBrowserBridge() {
     _channel.setMethodCallHandler(_handleMethodCall);
   }
 
   static const MethodChannel _channel = MethodChannel(
-    'com.nanvon.cctrace.mobile/q3_browser',
+    'com.nanvon.cctrace.mobile/oauth_browser',
   );
 
-  final StreamController<Q3BrowserEvent> _events =
-      StreamController<Q3BrowserEvent>.broadcast(sync: true);
+  final StreamController<OAuthBrowserEvent> _events =
+      StreamController<OAuthBrowserEvent>.broadcast(sync: true);
 
-  Stream<Q3BrowserEvent> get events => _events.stream;
+  @override
+  Stream<OAuthBrowserEvent> get events => _events.stream;
 
+  @override
   Future<void> open(Uri authorizeUri) async {
     await _channel.invokeMethod<void>('open', <String, String>{
       'url': authorizeUri.toString(),
     });
   }
 
+  @override
   Future<void> close() async {
     await _channel.invokeMethod<void>('close');
   }
@@ -42,10 +52,10 @@ class Q3BrowserBridge {
 
     switch (call.method) {
       case 'browserCancelled':
-        _events.add(const Q3BrowserEvent(Q3BrowserEventType.cancelled));
+        _events.add(const OAuthBrowserEvent(OAuthBrowserEventType.cancelled));
         break;
       case 'browserReturned':
-        _events.add(const Q3BrowserEvent(Q3BrowserEventType.returned));
+        _events.add(const OAuthBrowserEvent(OAuthBrowserEventType.returned));
         break;
       case 'browserFailed':
         final arguments = call.arguments;
@@ -53,14 +63,15 @@ class Q3BrowserBridge {
             ? arguments['category'] as String?
             : null;
         _events.add(
-          Q3BrowserEvent(Q3BrowserEventType.failed, category: category),
+          OAuthBrowserEvent(OAuthBrowserEventType.failed, category: category),
         );
         break;
     }
   }
 
+  @override
   Future<void> dispose() async {
-    await _channel.setMethodCallHandler(null);
+    _channel.setMethodCallHandler(null);
     await _events.close();
   }
 }

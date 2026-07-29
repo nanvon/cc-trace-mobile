@@ -1,8 +1,9 @@
 # OAuth 可行性验证
 
 > 状态：**Q1、Q2 与 Q4 基线已通过（2026-07-28，macOS 命令行 + 浏览器）；Q3 静态实现
-> 已完成但尚未构建或真机验证，Q4 的 scope / 限流 / `is_active` 补充实验进行中**
-> 这是启动 CC Trace Mobile 之前必须先完成的事。结论出来之前不写界面。
+> 已通过 Android 编译，iOS Runner 源码已通过独立 Swift 类型检查，但尚未真机验证；Q4 的
+> scope / 限流 / `is_active` 补充实验进行中。**
+> 原定“结论出来前不写界面”的开发顺序已由用户于 2026-07-29 明确调整，验收门槛不变。
 
 ## 为什么这件事排在最前面
 
@@ -204,9 +205,10 @@ user:sessions:claude_code user:mcp_servers user:file_upload
 
 ### Q3 · 本地 loopback server 在两个平台上都能接住回调吗？
 
-Q3 在 [实施计划的 S1 验证框架](实施计划.md) 内执行：必须是最小 Flutter 应用在真机上的
-真实浏览器与本地 server 链路，macOS 命令行脚本不能替代。当前最小工程和 P3 静态实现已
-完成，但尚未构建或真机运行；其中不包含额度 UI、Token 持久化或 usage 请求。
+Q3 在 [实施计划的 S1 验证框架](实施计划.md) 内执行：必须是 Flutter 应用在真机上的
+真实浏览器与本地 server 链路，macOS 命令行脚本不能替代。因用户明确调整开发顺序，
+正式额度 UI、Token 持久化与 usage 请求现已静态实现；它们不属于 Q3 证据。原最小 Q3
+工具保留在 Debug 构建的设置页，尚未真机运行。
 
 - iOS：`ASWebAuthenticationSession` 打开授权页；应用在前台时本地 server 能否稳定监听
 - Android：Chrome Custom Tabs；后台省电策略是否会掐掉监听

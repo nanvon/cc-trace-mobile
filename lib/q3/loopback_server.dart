@@ -28,10 +28,10 @@ class Q3CallbackEvent {
 
 class Q3LoopbackServer {
   Q3LoopbackServer._({
-    required HttpServer server,
+    required this._server,
     required this.config,
     required this.expectedState,
-  }) : _server = server {
+  }) {
     _subscription = _server.listen(
       _handleRequest,
       onError: (_) {

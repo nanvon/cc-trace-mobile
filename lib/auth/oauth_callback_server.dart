@@ -1,0 +1,161 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'oauth_config.dart';
+
+enum OAuthCallbackKind { accepted, providerCancelled, invalid, serverError }
+
+class OAuthCallbackEvent {
+  const OAuthCallbackEvent._(this.kind, {this.authorizationCode});
+
+  const OAuthCallbackEvent.accepted(String code)
+    : this._(OAuthCallbackKind.accepted, authorizationCode: code);
+
+  const OAuthCallbackEvent.providerCancelled()
+    : this._(OAuthCallbackKind.providerCancelled);
+
+  const OAuthCallbackEvent.invalid() : this._(OAuthCallbackKind.invalid);
+
+  const OAuthCallbackEvent.serverError()
+    : this._(OAuthCallbackKind.serverError);
+
+  final OAuthCallbackKind kind;
+  final String? authorizationCode;
+
+  @override
+  String toString() => 'OAuthCallbackEvent($kind, <redacted>)';
+}
+
+class OAuthCallbackServer {
+  OAuthCallbackServer._({
+    required this._server,
+    required this.config,
+    required this.expectedState,
+  }) {
+    _subscription = _server.listen(
+      _handle,
+      onError: (_) => _emit(const OAuthCallbackEvent.serverError()),
+      cancelOnError: false,
+    );
+  }
+
+  final HttpServer _server;
+  final OAuthConfig config;
+  final String expectedState;
+  final StreamController<OAuthCallbackEvent> _events =
+      StreamController<OAuthCallbackEvent>.broadcast(sync: true);
+  late final StreamSubscription<HttpRequest> _subscription;
+  bool _closed = false;
+
+  int get port => _server.port;
+  Stream<OAuthCallbackEvent> get events => _events.stream;
+
+  static Future<OAuthCallbackServer> bind({
+    required OAuthConfig config,
+    required String expectedState,
+  }) async {
+    for (final port in config.ports) {
+      try {
+        final server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          port,
+          shared: false,
+        );
+        return OAuthCallbackServer._(
+          server: server,
+          config: config,
+          expectedState: expectedState,
+        );
+      } on SocketException {
+        continue;
+      }
+    }
+    throw const SocketException('OAuth callback ports unavailable.');
+  }
+
+  Future<void> _handle(HttpRequest request) async {
+    try {
+      if (request.method != 'GET' || request.uri.path != config.callbackPath) {
+        await _respond(request, false);
+        _emit(const OAuthCallbackEvent.invalid());
+        return;
+      }
+      final parameters = request.uri.queryParameters;
+      final state = parameters['state'];
+      if (state == null || state != expectedState) {
+        await _respond(request, false);
+        _emit(const OAuthCallbackEvent.invalid());
+        return;
+      }
+      if (parameters.containsKey('error')) {
+        await _respond(request, false);
+        _emit(const OAuthCallbackEvent.providerCancelled());
+        return;
+      }
+      final code = parameters['code'];
+      if (code == null || code.isEmpty) {
+        await _respond(request, false);
+        _emit(const OAuthCallbackEvent.invalid());
+        return;
+      }
+      await _respond(request, true);
+      _emit(OAuthCallbackEvent.accepted(code));
+    } on Object {
+      try {
+        await _respond(request, false);
+      } on Object {
+        // The response may already be closed. Never expose request details.
+      }
+      _emit(const OAuthCallbackEvent.serverError());
+    }
+  }
+
+  Future<void> _respond(HttpRequest request, bool success) async {
+    final title = success ? '登录已接收' : '登录未完成';
+    final message = success
+        ? '可以关闭此页面并返回 CC Trace Mobile。'
+        : '请返回 CC Trace Mobile 后重试。';
+    request.response
+      ..statusCode = success ? HttpStatus.ok : HttpStatus.badRequest
+      ..headers.contentType = ContentType.html
+      ..headers.set(HttpHeaders.cacheControlHeader, 'no-store')
+      ..headers.set('Pragma', 'no-cache')
+      ..headers.set('X-Content-Type-Options', 'nosniff')
+      ..headers.set(
+        'Content-Security-Policy',
+        "default-src 'none'; style-src 'unsafe-inline'",
+      )
+      ..write('''
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>$title</title>
+  <style>
+    body { font: 16px -apple-system,BlinkMacSystemFont,sans-serif; padding: 32px; }
+    main { max-width: 520px; margin: 0 auto; }
+  </style>
+</head>
+<body><main><h1>$title</h1><p>$message</p></main></body>
+</html>
+''');
+    await request.response.close();
+  }
+
+  void _emit(OAuthCallbackEvent event) {
+    if (!_events.isClosed) {
+      _events.add(event);
+    }
+  }
+
+  Future<void> close() async {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    await _subscription.cancel();
+    await _server.close(force: true);
+    await _events.close();
+  }
+}

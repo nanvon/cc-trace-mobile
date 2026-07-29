@@ -51,11 +51,10 @@ class Q3Controller extends ChangeNotifier {
   }
 
   static const Duration _attemptTimeout = Duration(minutes: 5);
-  static const Duration _browserReturnGrace = Duration(milliseconds: 1500);
   static const Duration _duplicateGrace = Duration(seconds: 1);
 
-  final Q3BrowserBridge _browserBridge = Q3BrowserBridge();
-  late final StreamSubscription<Q3BrowserEvent> _browserSubscription;
+  final OAuthBrowserBridge _browserBridge = OAuthBrowserBridge();
+  late final StreamSubscription<OAuthBrowserEvent> _browserSubscription;
 
   Q3Provider provider = Q3Provider.codex;
   Q3Phase phase = Q3Phase.idle;
@@ -82,7 +81,6 @@ class Q3Controller extends ChangeNotifier {
   final List<HttpServer> _portOccupiers = <HttpServer>[];
   Timer? _timeoutTimer;
   Timer? _elapsedTimer;
-  Timer? _browserReturnTimer;
   Timer? _terminalCleanupTimer;
 
   bool get isActive => phase == Q3Phase.binding || phase == Q3Phase.browserOpen;
@@ -291,7 +289,7 @@ class Q3Controller extends ChangeNotifier {
     }
   }
 
-  void _onBrowserEvent(Q3BrowserEvent event) {
+  void _onBrowserEvent(OAuthBrowserEvent event) {
     if (_disposed || !_acceptBrowserEvents) {
       return;
     }
@@ -304,7 +302,7 @@ class Q3Controller extends ChangeNotifier {
     }
 
     switch (event.type) {
-      case Q3BrowserEventType.cancelled:
+      case OAuthBrowserEventType.cancelled:
         _browserOpened = false;
         unawaited(
           _enterTerminal(
@@ -314,22 +312,14 @@ class Q3Controller extends ChangeNotifier {
           ),
         );
         break;
-      case Q3BrowserEventType.returned:
+      case OAuthBrowserEventType.returned:
         _browserOpened = false;
-        _browserReturnTimer?.cancel();
-        _browserReturnTimer = Timer(_browserReturnGrace, () {
-          if (!_terminal && generation == _generation) {
-            unawaited(
-              _enterTerminal(
-                generation,
-                Q3Phase.cancelled,
-                category: 'browser returned without callback',
-              ),
-            );
-          }
-        });
+        // Android Custom Tabs may resume this Activity before the browser
+        // completes its localhost navigation. The lifecycle event is
+        // diagnostic only; callback, explicit cancellation, or timeout
+        // decides this attempt.
         break;
-      case Q3BrowserEventType.failed:
+      case OAuthBrowserEventType.failed:
         _browserOpened = false;
         unawaited(
           _enterTerminal(
@@ -386,7 +376,9 @@ class Q3Controller extends ChangeNotifier {
         break;
       case Q3SyntheticScenario.successThenBrowserReturn:
         await _sendSyntheticCallback();
-        _onBrowserEvent(const Q3BrowserEvent(Q3BrowserEventType.returned));
+        _onBrowserEvent(
+          const OAuthBrowserEvent(OAuthBrowserEventType.returned),
+        );
         break;
     }
   }
@@ -465,7 +457,6 @@ class Q3Controller extends ChangeNotifier {
     errorCategory = category;
     _freezeElapsed();
     _timeoutTimer?.cancel();
-    _browserReturnTimer?.cancel();
     notifyListeners();
 
     if (_browserOpened) {
@@ -511,11 +502,9 @@ class Q3Controller extends ChangeNotifier {
   Future<void> _cleanupAttempt({required bool closeBrowser}) async {
     _timeoutTimer?.cancel();
     _elapsedTimer?.cancel();
-    _browserReturnTimer?.cancel();
     _terminalCleanupTimer?.cancel();
     _timeoutTimer = null;
     _elapsedTimer = null;
-    _browserReturnTimer = null;
     _terminalCleanupTimer = null;
 
     if (closeBrowser && _browserOpened) {

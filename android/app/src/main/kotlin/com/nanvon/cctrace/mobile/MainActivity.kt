@@ -9,7 +9,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val channelName = "com.nanvon.cctrace.mobile/q3_browser"
+        private const val channelName = "com.nanvon.cctrace.mobile/oauth_browser"
         private val allowedAuthorizeHosts = setOf("auth.openai.com", "claude.com")
     }
 

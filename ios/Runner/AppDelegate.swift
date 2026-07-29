@@ -4,7 +4,7 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  private var q3BrowserBridge: Q3BrowserBridge?
+  private var oauthBrowserBridge: OAuthBrowserBridge?
 
   override func application(
     _ application: UIApplication,
@@ -15,16 +15,16 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    q3BrowserBridge = Q3BrowserBridge(
+    oauthBrowserBridge = OAuthBrowserBridge(
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
   }
 }
 
-private final class Q3BrowserBridge: NSObject,
+private final class OAuthBrowserBridge: NSObject,
   ASWebAuthenticationPresentationContextProviding
 {
-  private static let channelName = "com.nanvon.cctrace.mobile/q3_browser"
+  private static let channelName = "com.nanvon.cctrace.mobile/oauth_browser"
   private static let allowedAuthorizeHosts = Set(["auth.openai.com", "claude.com"])
   private static let cancelledLoginErrorCode = 1
 
