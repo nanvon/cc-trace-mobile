@@ -471,32 +471,36 @@ pod --version
 ### 6.1 仓库
 
 ```text
-执行日期：
-迁移提交：
-最终 git status：
-废弃路径是否全部进入废纸篓：
-异常：
+执行日期：2026-07-29
+迁移提交：1481bf02147d851b8e2a15bf203388bb18022f40
+最终 git status：执行记录提交后 clean
+废弃路径是否全部进入废纸篓：是，§4.3 的 17 个明确路径均已处理
+异常：无
 ```
 
 ### 6.2 环境
 
 ```text
-Flutter：
-Dart：
-Flutter 路径：
-Android SDK 路径：
-Android Platform：
-Build Tools：
-Platform Tools：
-NDK：
-CMake：
-Java：
-Xcode / iPhoneOS SDK：
-CocoaPods：
-flutter doctor 摘要：
-实际下载流量：无法精确测量时写“未测量”，不得猜测
-实际新增磁盘：安装前后同一文件系统差值
-异常：
+Flutter：3.44.8 Stable，revision 058e0af2c2b57e369d905a03ac9748b0ebf543c6
+Dart：3.12.2 Stable
+Flutter 路径：/Users/nanvon/Developer/flutter
+Android SDK 路径：/Users/nanvon/Library/Android/sdk
+Android Platform：36
+Build Tools：36.1.0
+Platform Tools：37.0.0，adb 1.0.41
+NDK：28.2.13676358
+CMake：3.22.1
+Java：Oracle JDK 17.0.10 arm64
+Xcode / iPhoneOS SDK：Xcode 26.6（17F113）/ iPhoneOS SDK 26.5
+CocoaPods：1.17.0
+flutter doctor 摘要：Flutter、Android toolchain、Network resources 通过；Android licenses
+  全部接受。Xcode 工具、iPhoneOS SDK 与 CocoaPods 可用，但因本机没有 Simulator Runtime，
+  Xcode 项为 [!]；按本计划未下载新 Runtime。Android Studio、模拟器和连接设备均非本轮要求。
+实际下载流量：未测量
+实际新增磁盘：10.32 GiB；同一文件系统 df -k 的 Used 从 261367160 KiB 增至
+  272186024 KiB，差值 10818864 KiB
+异常：sdkmanager 提示自身已废弃并推荐新版 Android CLI，但固定包安装与验收均成功；
+  ClashBar 未修改，未安装 Android Studio、模拟器或新 iOS Simulator Runtime
 ```
 
 回填后创建第二个中文文档提交：
