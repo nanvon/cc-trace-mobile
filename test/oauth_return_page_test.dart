@@ -13,7 +13,7 @@ void main() {
       );
 
       expect(page, contains('cctrace://oauth-finished'));
-      expect(page, contains('返回 CC Trace Mobile'));
+      expect(page, contains('返回 CC Trace'));
       expect(page, isNot(contains('code=')));
       expect(page, isNot(contains('state=')));
       expect(page, isNot(contains('token')));

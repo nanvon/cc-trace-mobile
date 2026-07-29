@@ -36,6 +36,7 @@ target/
 # Android
 .gradle/
 local.properties
+/android/signing.properties
 *.apk
 *.aab
 *.keystore
@@ -54,12 +55,17 @@ Pods/
 # 凭据与真实响应：任何情况下都不得入库
 *.p8
 *.p12
+*.pem
+*.key
 *.mobileprovision
+*.tar.gz.enc
+*.zip.enc
 secrets.*
 .env
 .env.*
 !.env.example
 fixtures/raw/
+/docs/private/
 
 # Editor
 .vscode/*

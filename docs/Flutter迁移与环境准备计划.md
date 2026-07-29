@@ -9,7 +9,7 @@
 
 ## 1. 本次决定
 
-CC Trace Mobile 的应用技术栈从 **Tauri 2 Mobile + Vue 3 + Rust** 改为
+`cc-trace-mobile` 仓库的应用技术栈从 **Tauri 2 Mobile + Vue 3 + Rust** 改为
 **Flutter Stable + Dart**，Android 优先，iOS 保留同一代码库。
 
 这项决定推翻 [ADR-0001](决策/ADR-0001-独立仓库与技术栈选型.md) 的技术栈部分，
@@ -24,7 +24,7 @@ CC Trace Mobile 的应用技术栈从 **Tauri 2 Mobile + Vue 3 + Rust** 改为
 3. Flutter 是移动优先的一套 UI 与业务代码，Dart 自带 `HttpServer`，适合承载本项目
    必须真机验证的 loopback OAuth；平台浏览器、安全存储等能力仍允许用少量 Kotlin / Swift
    桥接。
-4. Android 是首要开发和可能分发的平台；iOS 仅本人使用，继续遵守免费 Apple ID、
+4. Android 是首要开发和可能分发的平台；iOS 使用免费 Apple ID 真机调试，继续遵守
    Personal Team 与 7 天重签约束，不购买开发者会员。
 
 ## 2. 本轮执行范围
@@ -32,7 +32,7 @@ CC Trace Mobile 的应用技术栈从 **Tauri 2 Mobile + Vue 3 + Rust** 改为
 下一次对话**只完成两件事**：
 
 1. 整理仓库：保留有效研究成果，废弃未提交的 Tauri 工程，更新并提交技术决策文档。
-2. 安装并配置 Flutter、Android、iOS 所需的本机开发环境。
+2. 安装并配置 Flutter、Android、iOS 所需的开发环境。
 
 明确不做：
 
@@ -44,7 +44,7 @@ CC Trace Mobile 的应用技术栈从 **Tauri 2 Mobile + Vue 3 + Rust** 改为
 - 不运行应用 build、test、lint、dev、模拟器或真机构建
 - 不安装 Android Studio
 - 不安装 Android Emulator、Android AVD 或新的 iOS Simulator Runtime
-- 不修改 ClashBar 的规则、策略组或节点选择
+- 不修改现有网络或代理配置
 - 不提交真实凭据、原始 token 或未脱敏响应
 - 不 push
 
@@ -79,7 +79,7 @@ git diff --stat
 若状态与本计划的清单不一致，先报告差异；不得用 `git clean -fdx`、`git reset --hard`
 或宽泛删除命令把未知内容一起清掉。
 
-### 3.2 本机环境
+### 3.2 开发环境
 
 已确认：
 
@@ -93,29 +93,17 @@ git diff --stat
 | Homebrew | `/opt/homebrew` |
 | Flutter / Dart | 未安装 |
 | Android SDK / adb / sdkmanager | 未安装 |
-| 可用磁盘 | 约 186 GiB |
+| 可用磁盘 | 满足本计划至少 20 GB 的要求 |
 
 Flutter 3.44 起 iOS 默认使用 Swift Package Manager；CocoaPods 只作为不支持 SwiftPM 的插件
 回退。现有 Xcode、iOS SDK、JDK 与 CocoaPods 不重复安装。
 
 ### 3.3 网络
 
-当前 ClashBar / Mihomo：
+下载使用执行环境已有的网络配置，不在公开文档记录代理软件、策略组、节点或线路信息。
+Flutter 3.44.8 镜像文件的大小和校验值已与官方源核对一致。
 
-```text
-TUN = 开启
-mode = rule
-下载策略 → 一键智能 → 省流策略 → 台湾 0.3X 节点
-```
-
-已实测：
-
-- `storage.flutter-io.cn` 命中 `cn_domain → 全球直连 → DIRECT`
-- Flutter 3.44.8 镜像文件已经同步，大小与官方源一致
-- 镜像文件 MD5 与官方源一致
-- `dl.google.com` 命中下载策略，当前会使用 0.3X 节点
-
-执行时维持现有 ClashBar 配置，不全局切换 `DIRECT`，也不添加新规则。
+执行时不得为完成安装而擅自切换全局路由、添加规则或改用来源不明的镜像。
 
 ## 4. 仓库整理
 
@@ -135,7 +123,7 @@ docs/原型/额度主屏.html
 
 - `verify/oauth/` 继续作为独立 Rust 验证工具存在，不属于未来 Flutter 应用。
 - Rust 脚手架已完成 Q4 基线验证，不能因为应用改用 Dart 就删除。
-- 不卸载本机全局 Node、pnpm、Rust 或 Cargo；其它仓库仍可能依赖它们。
+- 不卸载开发环境中的全局 Node、pnpm、Rust 或 Cargo；其它仓库仍可能依赖它们。
 - 不清理全局 Cargo、pnpm、Homebrew 或 Xcode 缓存。
 
 ### 4.2 更新后提交
@@ -284,8 +272,8 @@ src-tauri/gen/
 |---|---|
 | Flutter | 3.44.8 Stable |
 | Dart | 3.12.2，由 Flutter 自带 |
-| Flutter SDK | `/Users/nanvon/Developer/flutter` |
-| Android SDK | `/Users/nanvon/Library/Android/sdk` |
+| Flutter SDK | `$HOME/Developer/flutter` |
+| Android SDK | `$HOME/Library/Android/sdk` |
 | Android Platform | 36 |
 | Android Build Tools | 36.1.0 |
 | Android Platform Tools | stable |
@@ -317,7 +305,7 @@ Git revision = 058e0af2c2b57e369d905a03ac9748b0ebf543c6
 
 1. 在 `mktemp -d` 创建的明确临时目录下载，支持断点续传。
 2. 下载完成后先校验 SHA-256，再解压。
-3. `/Users/nanvon/Developer/flutter` 若在执行时已经存在，不覆盖；先检查来源和版本并报告。
+3. `$HOME/Developer/flutter` 若在执行时已经存在，不覆盖；先检查来源和版本并报告。
 4. 安装成功并验证后，用 `trash` 清理下载压缩包和临时目录。
 
 永久镜像环境：
@@ -328,17 +316,17 @@ PUB_HOSTED_URL=https://pub.flutter-io.cn
 ```
 
 将 Flutter、Android 与 JDK 环境以带开始 / 结束标记的独立区块加入
-`/Users/nanvon/.zprofile`，不得覆盖该文件的其它内容，不重复追加：
+`~/.zprofile`，不得覆盖该文件的其它内容，不重复追加：
 
 ```text
-# >>> CC Trace Mobile Flutter toolchain >>>
+# >>> cc-trace-mobile Flutter toolchain >>>
 export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
 export PUB_HOSTED_URL="https://pub.flutter-io.cn"
-export FLUTTER_ROOT="/Users/nanvon/Developer/flutter"
-export ANDROID_HOME="/Users/nanvon/Library/Android/sdk"
+export FLUTTER_ROOT="$HOME/Developer/flutter"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
 export JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home"
 export PATH="$FLUTTER_ROOT/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-# <<< CC Trace Mobile Flutter toolchain <<<
+# <<< cc-trace-mobile Flutter toolchain <<<
 ```
 
 修改用户目录与 shell 配置前必须走权限确认。新 shell 中验证环境变量和 PATH 生效；
@@ -357,13 +345,13 @@ SHA-1 = c4e0dbc53f1a4ce04fc2b11d4e2c4675001a95af
 下载后校验 SHA-1，按 Android 官方目录布局安装到：
 
 ```text
-/Users/nanvon/Library/Android/sdk/cmdline-tools/latest/
+$HOME/Library/Android/sdk/cmdline-tools/latest/
 ```
 
 必须保证最终存在：
 
 ```text
-/Users/nanvon/Library/Android/sdk/cmdline-tools/latest/bin/sdkmanager
+$HOME/Library/Android/sdk/cmdline-tools/latest/bin/sdkmanager
 ```
 
 不要形成错误的双层路径：
@@ -375,7 +363,7 @@ cmdline-tools/latest/cmdline-tools/bin/sdkmanager
 ### 5.4 Android SDK 包
 
 通过上一步的 `sdkmanager`，显式指定
-`--sdk_root=/Users/nanvon/Library/Android/sdk` 安装：
+`--sdk_root=$HOME/Library/Android/sdk` 安装：
 
 ```text
 platform-tools
@@ -392,16 +380,15 @@ ndk;28.2.13676358
 - 不安装 Android Emulator、system image、AVD、LLDB 或其它 API Level。
 - 不用模糊的 `ndk;28.x`，必须使用完整包 ID。
 - 不设置 `NDK_HOME`；Flutter / Gradle 通过 Android SDK 中的版本目录和 `ndkVersion` 使用 NDK。
-- 运行 `flutter config --android-sdk /Users/nanvon/Library/Android/sdk`。
+- 运行 `flutter config --android-sdk "$HOME/Library/Android/sdk"`。
 - 运行 `flutter precache --android --ios`，只准备 Android 与 iOS，不预缓存 Web 或桌面目标。
 
-Android 官方下载当前会使用 0.3X 节点。预计 Android 基础包原始下载约 1.31 GB，
-理论机场计费约 0.39 GB；执行期间再为元数据和误差预留额度。
+Android 基础包预计下载约 1.31 GB；执行期间还需为元数据和误差预留流量。
 
-如果 Android 下载失败或机场额度不足：
+如果 Android 下载失败或可用网络流量不足：
 
 - 立即停止并报告已完成的包和失败 URL。
-- 不私自修改 ClashBar。
+- 不私自修改现有网络或代理配置。
 - 不切换来路不明的 Android SDK / NDK 镜像。
 - 不为了完成任务而删掉已正确安装的 Flutter。
 
@@ -441,8 +428,8 @@ pod --version
 通过标准：
 
 - Flutter 精确为 3.44.8 Stable，Dart 为 3.12.2。
-- Flutter 路径为 `/Users/nanvon/Developer/flutter`。
-- Android SDK 路径为 `/Users/nanvon/Library/Android/sdk`。
+- Flutter 路径为 `$HOME/Developer/flutter`。
+- Android SDK 路径为 `$HOME/Library/Android/sdk`。
 - Platform 36、Build Tools 36.1.0、NDK 28.2.13676358、CMake 3.22.1、
   platform-tools 全部列为已安装。
 - Android licenses 已接受。
@@ -462,7 +449,7 @@ pod --version
 | 本轮缓存与余量 | 少量 | 约 1 GB |
 
 本轮不创建项目、不下载 Gradle 项目依赖，预计新增磁盘约 9–11 GB。
-执行前要求至少 20 GB 可用；当前约 186 GiB，满足。
+执行前要求至少 20 GB 可用；执行环境已满足。
 
 ## 6. 执行记录
 
@@ -483,8 +470,8 @@ pod --version
 ```text
 Flutter：3.44.8 Stable，revision 058e0af2c2b57e369d905a03ac9748b0ebf543c6
 Dart：3.12.2 Stable
-Flutter 路径：/Users/nanvon/Developer/flutter
-Android SDK 路径：/Users/nanvon/Library/Android/sdk
+Flutter 路径：$HOME/Developer/flutter
+Android SDK 路径：$HOME/Library/Android/sdk
 Android Platform：36
 Build Tools：36.1.0
 Platform Tools：37.0.0，adb 1.0.41
@@ -494,13 +481,12 @@ Java：Oracle JDK 17.0.10 arm64
 Xcode / iPhoneOS SDK：Xcode 26.6（17F113）/ iPhoneOS SDK 26.5
 CocoaPods：1.17.0
 flutter doctor 摘要：Flutter、Android toolchain、Network resources 通过；Android licenses
-  全部接受。Xcode 工具、iPhoneOS SDK 与 CocoaPods 可用，但因本机没有 Simulator Runtime，
+  全部接受。Xcode 工具、iPhoneOS SDK 与 CocoaPods 可用，但因开发环境没有 Simulator Runtime，
   Xcode 项为 [!]；按本计划未下载新 Runtime。Android Studio、模拟器和连接设备均非本轮要求。
 实际下载流量：未测量
-实际新增磁盘：10.32 GiB；同一文件系统 df -k 的 Used 从 261367160 KiB 增至
-  272186024 KiB，差值 10818864 KiB
+实际新增磁盘：约 10.32 GiB
 异常：sdkmanager 提示自身已废弃并推荐新版 Android CLI，但固定包安装与验收均成功；
-  ClashBar 未修改，未安装 Android Studio、模拟器或新 iOS Simulator Runtime
+  网络与代理配置未修改，未安装 Android Studio、模拟器或新 iOS Simulator Runtime
 ```
 
 回填后创建第二个中文文档提交：
@@ -520,7 +506,7 @@ flutter doctor 摘要：Flutter、Android toolchain、Network resources 通过�
 - Flutter 下载哈希不匹配
 - 目标安装目录已存在且来源不明
 - Android 许可证无法交互确认
-- 下载失败且需要修改 ClashBar、改用非官方 Android 镜像或消耗超出预期的机场流量
+- 下载失败且需要修改现有网络配置、改用非官方 Android 镜像或消耗超出预期的网络流量
 - 安装需要覆盖现有 Xcode、JDK、CocoaPods 或其它全局工具
 - `flutter doctor` 的修复建议要求安装 Android Studio、模拟器或创建示例项目
 - 任何步骤开始要求编写 Flutter 应用代码
@@ -533,7 +519,7 @@ flutter doctor 摘要：Flutter、Android toolchain、Network resources 通过�
 - Tauri / Vue / Vite 未提交骨架与本地依赖已移入废纸篓
 - OAuth 研究资产完整保留
 - Flutter 与移动端命令行工具链安装、固定版本并通过环境诊断
-- ClashBar 没有被修改
+- 现有网络与代理配置没有被修改
 - 没有 Android Studio、模拟器或新 iOS Runtime
 - 没有 Flutter 应用骨架与业务代码
 - 两个计划内提交已经创建但没有 push

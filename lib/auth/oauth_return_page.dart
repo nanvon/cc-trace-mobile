@@ -18,7 +18,7 @@ String buildOAuthReturnPage({
       : '';
   final returnAction = shouldOfferReturn
       ? '''
-    <p><a href="$oauthReturnUri">返回 CC Trace Mobile</a></p>
+    <p><a href="$oauthReturnUri">返回 CC Trace</a></p>
     <p class="hint">如果没有自动返回，请点击上方按钮。</p>'''
       : '';
 

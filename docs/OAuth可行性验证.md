@@ -24,7 +24,7 @@
 | client_id | `app_EMoamEEZ73f0CkXaXp7hrann` | `9d1c250a-e61b-44d9-88ed-5944d1962f5e` |
 
 这两个 `client_id` 属于 Codex CLI 和 Claude Code 官方客户端，是公开值。Claude 的
-`9d1c250a-…` 已于 2026-07-28 在本机 Claude Code 2.1.206 二进制的 prod 配置里复核，一致。
+`9d1c250a-…` 已于 2026-07-28 在 Claude Code 2.1.206 二进制的 prod 配置里复核，一致。
 
 **桌面端已验证的只有 token 刷新和 usage 查询这两步。** authorize 端点、PKCE 参数、
 redirect_uri 白名单原本全部未知，2026-07-28 由 Q1 / Q2 补齐，见下。
@@ -47,13 +47,14 @@ Claude: http://localhost:54545/callback
 
 如果白名单只有这两个 loopback 地址，**这未必是坏消息**——手机上的 `localhost` 就是手机自己。应用内起一个监听对应端口的本地 HTTP server，用系统浏览器打开 authorize URL，重定向回 `localhost:1455` 时能被自己接住。Android 上这是 AppAuth 早年的标准做法，iOS 上同样可行。
 
-> 我此前判断「Provider 未必把移动端 redirect URI 列进白名单」是个可行性风险。补充 loopback 这条路径后，风险比那个判断要低——但仍需实测确认。
+> 此前将「Provider 未必把移动端 redirect URI 列进白名单」视为可行性风险。补充 loopback
+> 路径后，这项风险降低，但仍需实测确认。
 
 真正的坏情况是白名单要求了移动端拿不到的东西（例如绑定到桌面应用签名的自定义 scheme）。
 
 **判定**：能拿到 authorization code 即通过。
 
-#### 结论：**通过**（2026-07-28，macOS，用户本人账号真实登录）
+#### 结论：**通过**（2026-07-28，macOS，账号持有人真实登录）
 
 两个 Provider 都成功收到 authorization code，state 校验通过。code 未换 token、未落盘。
 **不触发当前产品形态或 [ADR-0002](决策/ADR-0002-Flutter移动端技术栈.md) 的复审。**
@@ -129,9 +130,9 @@ Claude 可能接受原生 scheme（那样移动端就不必起本地 HTTP server
 两个 Provider 的 authorize 请求都被接受并走完到 code 返回。参数不是猜的，来源如下：
 
 - **Codex**：[openai/codex](https://github.com/openai/codex) 开源仓库
-  `codex-rs/login/src/server.rs` 的 `build_authorize_url()`，与本机 codex 0.145.0
+  `codex-rs/login/src/server.rs` 的 `build_authorize_url()`，与 codex 0.145.0
   二进制中的字符串一致
-- **Claude**：本机 Claude Code 2.1.206 二进制中的 `buildAuthUrl()`（该版本为 Bun 打包的
+- **Claude**：Claude Code 2.1.206 二进制中的 `buildAuthUrl()`（该版本为 Bun 打包的
   单文件可执行，JS 源码可直接提取）
 
 ##### Codex
@@ -511,11 +512,12 @@ Redirect URI cctrace://callback is not supported by client.
 |---|---|---|---|
 | Q2 参数来源 | 2026-07-28 | macOS | Codex 开源源码 + Claude Code 2.1.206 二进制提取 |
 | Q1 白名单矩阵 | 2026-07-28 | macOS | 浏览器逐个探测 authorize 端点 |
-| Q1 拿到 code | 2026-07-28 | macOS | 本机 loopback server + 用户本人账号真实登录 |
+| Q1 拿到 code | 2026-07-28 | macOS | 本地 loopback server + 账号持有人真实登录 |
 | Q1 补测（scheme / IP 字面量） | 2026-07-28 | macOS | 同上，两项 Claude 侧均被拒 |
 | Q3 | 2026-07-29 | Android 观察到 localhost Resolver；修复待验证，iOS 未验证 | Custom Tabs Session / 二段回跳已编码，arm64 Release 已构建 |
-| Q4 基线 | 2026-07-28 | macOS | 系统浏览器 + 本机 loopback；两家 token / usage 均为 200，完整 usage 证据仅本地留存 |
+| Q4 基线 | 2026-07-28 | macOS | 系统浏览器 + 本地 loopback；两家 token / usage 均为 200，完整 usage 证据仅本地留存 |
 | Q4 补充实验 | — | macOS | 最小 scope、5 小时 `is_active`、429 限流均未完成 |
 
-验证过程中 authorization code 未被解析、未落盘、未换取 token；未读写本机
-`~/.codex` 与 `~/.claude` 的任何凭据。
+Q1 白名单验证中的 authorization code 未落盘、未换取 token；Q4 基线已完成 token 交换，
+但 token 与完整原始响应仅在 Git 忽略的本地证据目录中短暂处理，不进入仓库。整个验证过程
+未读写 `~/.codex` 与 `~/.claude` 的任何凭据。

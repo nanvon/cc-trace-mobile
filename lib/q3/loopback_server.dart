@@ -180,7 +180,7 @@ class Q3LoopbackServer {
         request,
         statusCode: HttpStatus.ok,
         title: '授权回调已接收',
-        message: 'CC Trace Mobile 未交换授权码，可以返回应用。',
+        message: 'CC Trace 未交换授权码，可以返回应用。',
         offerReturnToApp: true,
       );
       _emit(

@@ -7,7 +7,7 @@
 
 ## 背景
 
-CC Trace Mobile 已明确为独立于桌面端的产品。两端只沿用品牌、设计 token、额度语义和
+CC Trace 移动端应用已明确独立于桌面端应用。两端只沿用品牌、设计 token、额度语义和
 Provider 协议事实；移动端不复用 Vue、Rust、Tauri IPC、桌面壳或生命周期。
 
 原选型 Tauri 2 Mobile 的主要收益是复用桌面端技术栈。这个前提消失后，移动端继续承担
@@ -48,7 +48,7 @@ WebView、Rust 和双平台插件三层复杂度，已经没有相称的共享�
 ## 分发约束
 
 - Android 可直接分发 APK。
-- iOS 仅本人使用免费 Apple ID / Personal Team 真机调试，接受 7 天重签。
+- iOS 使用免费 Apple ID / Personal Team 真机调试，接受 7 天重签。
 - 不提出任何以购买 Apple 开发者账号或代码签名证书为前提的方案。
 
 ## 复审条件

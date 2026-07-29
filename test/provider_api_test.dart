@@ -22,7 +22,7 @@ void main() {
         obtainedAt: now,
         expiresAt: now.add(const Duration(hours: 1)),
         accountId: 'account-id',
-        accountHint: 'nanvon@example.com',
+        accountHint: 'sample@example.com',
       ),
     );
     final requested = <Uri>[];
@@ -100,8 +100,8 @@ void main() {
           {
             "account": {
               "uuid": "account-uuid",
-              "email": "nanvon@example.com",
-              "display_name": "Nanvon"
+              "email": "sample@example.com",
+              "display_name": "Example User"
             },
             "organization": {"uuid": "organization-uuid"}
           }
@@ -131,10 +131,10 @@ void main() {
       (await credentials.read(ProviderId.claude))?.accessToken,
       'new-access',
     );
-    expect(result.identity?.accountHint, 'nanvon@example.com');
+    expect(result.identity?.accountHint, 'sample@example.com');
     expect(
       (await credentials.read(ProviderId.claude))?.accountHint,
-      'nanvon@example.com',
+      'sample@example.com',
     );
     expect(
       (await credentials.read(ProviderId.claude))?.accountFingerprint,
@@ -173,7 +173,7 @@ void main() {
               {
                 "account": {
                   "uuid": "account-uuid",
-                  "email": "nanvon@example.com"
+                  "email": "sample@example.com"
                 },
                 "organization": {"uuid": "organization-uuid"}
               }

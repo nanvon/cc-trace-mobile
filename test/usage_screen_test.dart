@@ -56,7 +56,7 @@ void main() {
     expect(find.text('3 次可用'), findsOneWidget);
     expect(find.text('Plus'), findsOneWidget);
     expect(find.text('Max'), findsOneWidget);
-    expect(find.text('nanvon@example.com'), findsNWidgets(2));
+    expect(find.text('sample@example.com'), findsNWidgets(2));
     expect(find.text('2 天后重置'), findsOneWidget);
     expect(find.text('4 小时后重置'), findsOneWidget);
     controller.dispose();

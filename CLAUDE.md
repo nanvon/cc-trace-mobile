@@ -1,6 +1,6 @@
-# CC Trace Mobile AI 协作规范
+# cc-trace-mobile AI 协作规范
 
-本文件约束参与 CC Trace Mobile 的 AI。它规定**怎么工作**；产品与技术事实由 `docs/` 拥有。
+本文件约束参与 `cc-trace-mobile` 仓库的 AI。它规定**怎么工作**；产品与技术事实由 `docs/` 拥有。
 
 ## 1. 当前阶段
 

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!--
-  CC Trace Mobile · 额度主屏状态原型
+  CC Trace · 额度主屏状态原型
   数据形态以 ../移动端额度展示要求.md 为准；视觉方向 HeroUI，与桌面端 ADR-0012 一致。
   这是设计稿，不是应用代码：不进 Flutter 应用工程、不参与构建。
   合成数据，不来自 Codex 或 Claude Code。
 -->
-<title>CC Trace Mobile · 状态原型</title>
+<title>CC Trace · 状态原型</title>
 </head>
 <body>
 
@@ -372,7 +372,7 @@
       </li>
       <li>
         <b>模型级窗口</b>（03）。Pro 看不到，Max 才有。逻辑必须在，
-        不能因为当前账号看不到就不实现。
+        不能因为现有验证样本没有就不实现。
       </li>
     </ol>
 
@@ -468,7 +468,7 @@
   ];
 
   const codexOk = {
-    name: "Codex", plan: "Plus", acct: "nanvon@example.com",
+    name: "Codex", plan: "Plus", acct: "sample@example.com",
     pct: 59, win: "每周窗口", reset: "周一 09:00 重置",
     credit: { n: 3, x: "最早 8/4 过期" },
     times: {
@@ -481,7 +481,7 @@
     },
   };
   const claudeOk = {
-    name: "Claude Code", plan: "Pro", acct: "nanvon@example.com",
+    name: "Claude Code", plan: "Pro", acct: "sample@example.com",
     pct: 78, win: "5 小时窗口", reset: "4 小时后重置", subs: CLAUDE_PRO_SUBS,
   };
 

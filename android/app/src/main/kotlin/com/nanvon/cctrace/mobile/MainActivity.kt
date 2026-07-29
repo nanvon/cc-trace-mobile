@@ -197,7 +197,7 @@ class MainActivity : FlutterActivity() {
         } catch (_: RuntimeException) {
             result.error(
                 "APP_RETURN_FAILED",
-                "CC Trace Mobile could not be brought to the foreground.",
+                "CC Trace could not be brought to the foreground.",
                 null,
             )
         }
@@ -264,7 +264,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         failPendingBrowserOpen(
             "SESSION_START_FAILED",
-            "CC Trace Mobile was closed while connecting to the browser.",
+            "CC Trace was closed while connecting to the browser.",
         )
         disconnectCustomTabsService()
         super.onDestroy()

@@ -18,7 +18,7 @@ void main() {
       availability: ProviderAvailability.ready,
       isSignedIn: true,
       identity: const ProviderIdentity(
-        accountHint: 'nanvon@example.com',
+        accountHint: 'sample@example.com',
         plan: 'Plus',
         identityKey: 'identity',
       ),

@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="CC Trace Mobile"
+        android:label="CC Trace"
         android:name="${applicationName}"
         android:allowBackup="false"
         android:fullBackupContent="false"

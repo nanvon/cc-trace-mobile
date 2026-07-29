@@ -114,8 +114,8 @@ class OAuthCallbackServer {
   Future<void> _respond(HttpRequest request, bool success) async {
     final title = success ? '登录已接收' : '登录未完成';
     final message = success
-        ? '可以关闭此页面并返回 CC Trace Mobile。'
-        : '请返回 CC Trace Mobile 后重试。';
+        ? '可以关闭此页面并返回 CC Trace。'
+        : '请返回 CC Trace 后重试。';
     request.response
       ..statusCode = success ? HttpStatus.ok : HttpStatus.badRequest
       ..headers.contentType = ContentType.html

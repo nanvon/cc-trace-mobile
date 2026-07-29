@@ -56,7 +56,7 @@ TokenBundle fakeToken(
         ? identity ?? '${provider.name}-account'
         : null,
     accountHint: provider == ProviderId.codex || !opaqueIdentity
-        ? 'nanvon@example.com'
+        ? 'sample@example.com'
         : null,
     accountFingerprint: provider == ProviderId.claude && !opaqueIdentity
         ? identity
@@ -155,7 +155,7 @@ ProviderFetchResult fakeSuccess(
       primaryActive: primaryActive,
     ),
     identity: ProviderIdentity(
-      accountHint: 'nanvon@example.com',
+      accountHint: 'sample@example.com',
       plan: provider == ProviderId.codex
           ? 'Plus'
           : includeModel
