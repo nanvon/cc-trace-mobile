@@ -649,7 +649,7 @@ class _CodexTimeDetailsReveal extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizeTransition(
       sizeFactor: animation,
-      axisAlignment: -1,
+      alignment: AlignmentDirectional.topStart,
       child: FadeTransition(
         opacity: animation,
         child: AnimatedBuilder(
