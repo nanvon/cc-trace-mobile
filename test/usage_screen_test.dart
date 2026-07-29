@@ -56,7 +56,7 @@ void main() {
     expect(find.text('3 次可用'), findsOneWidget);
     expect(find.text('Plus'), findsOneWidget);
     expect(find.text('Max'), findsOneWidget);
-    expect(find.text('na•••@example.com'), findsNWidgets(2));
+    expect(find.text('nanvon@example.com'), findsNWidgets(2));
     expect(find.text('2 天后重置'), findsOneWidget);
     expect(find.text('4 小时后重置'), findsOneWidget);
     controller.dispose();
@@ -84,7 +84,49 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('does not render an inactive primary window as usable quota', (
+  testWidgets('Codex card expansion is reversible and shows every known time', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    final controller = _controller(
+      credentials: credentials,
+      now: now,
+      gateway: FakeProviderGateway(
+        (provider) async => fakeSuccess(provider, now: now),
+      ),
+    );
+    await controller.bootstrap();
+    await _pump(tester, controller);
+
+    final card = find.byKey(const ValueKey(ProviderId.codex));
+    final collapsedHeight = tester.getSize(card).height;
+
+    await tester.tap(card);
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getSize(card).height, greaterThan(collapsedHeight));
+
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(card).height,
+      moreOrLessEquals(collapsedHeight, epsilon: .5),
+    );
+
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(card).height, greaterThan(collapsedHeight));
+    expect(find.text('时间明细'), findsOneWidget);
+    expect(find.text('本地时间'), findsOneWidget);
+    expect(find.text('7/31 09:00 重置'), findsOneWidget);
+    expect(find.text('8/4 09:00 过期'), findsOneWidget);
+    expect(find.text('8/5 09:00 过期'), findsOneWidget);
+    expect(find.text('8/6 09:00 过期'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('renders an inactive plan-wide window as not started', (
     tester,
   ) async {
     final now = DateTime(2026, 7, 29, 9);
@@ -94,21 +136,18 @@ void main() {
       credentials: credentials,
       now: now,
       gateway: FakeProviderGateway(
-        (provider) async => fakeSuccess(
-          provider,
-          now: now,
-          remaining: 78,
-          primaryActive: false,
-        ),
+        (provider) async =>
+            fakeSuccess(provider, now: now, primaryActive: false),
       ),
     );
 
     await controller.bootstrap();
     await _pump(tester, controller);
 
-    expect(find.text('78%'), findsNothing);
-    expect(find.text('当前不可用'), findsOneWidget);
-    expect(find.text('--'), findsNWidgets(2));
+    expect(find.text('78%'), findsOneWidget);
+    expect(find.text('未开始'), findsOneWidget);
+    expect(find.text('当前不可用'), findsNothing);
+    expect(find.text('--'), findsOneWidget);
     controller.dispose();
   });
 

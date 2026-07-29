@@ -22,7 +22,7 @@ void main() {
         obtainedAt: now,
         expiresAt: now.add(const Duration(hours: 1)),
         accountId: 'account-id',
-        accountHint: 'na•••@example.com',
+        accountHint: 'nanvon@example.com',
       ),
     );
     final requested = <Uri>[];
@@ -93,6 +93,20 @@ void main() {
           200,
         );
       }
+      if (request.url.toString() == claudeProfileEndpoint) {
+        expect(request.headers['authorization'], 'Bearer new-access');
+        expect(request.headers['content-type'], 'application/json');
+        return http.Response('''
+          {
+            "account": {
+              "uuid": "account-uuid",
+              "email": "nanvon@example.com",
+              "display_name": "Nanvon"
+            },
+            "organization": {"uuid": "organization-uuid"}
+          }
+          ''', 200);
+      }
       expect(request.headers['authorization'], 'Bearer new-access');
       expect(request.headers['anthropic-beta'], 'oauth-2025-04-20');
       return http.Response('''
@@ -116,6 +130,15 @@ void main() {
     expect(
       (await credentials.read(ProviderId.claude))?.accessToken,
       'new-access',
+    );
+    expect(result.identity?.accountHint, 'nanvon@example.com');
+    expect(
+      (await credentials.read(ProviderId.claude))?.accountHint,
+      'nanvon@example.com',
+    );
+    expect(
+      (await credentials.read(ProviderId.claude))?.accountFingerprint,
+      isNotNull,
     );
   });
 
@@ -145,6 +168,17 @@ void main() {
               200,
             );
           }
+          if (request.url.toString() == claudeProfileEndpoint) {
+            return http.Response('''
+              {
+                "account": {
+                  "uuid": "account-uuid",
+                  "email": "nanvon@example.com"
+                },
+                "organization": {"uuid": "organization-uuid"}
+              }
+              ''', 200);
+          }
           usageRequests++;
           if (request.headers['authorization'] == 'Bearer opaque-old') {
             return http.Response('{}', 401);
@@ -167,6 +201,42 @@ void main() {
       expect(refreshRequests, 1);
     },
   );
+
+  test('Claude usage still succeeds when profile is unavailable', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(
+      TokenBundle(
+        provider: ProviderId.claude,
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        obtainedAt: now,
+        expiresAt: now.add(const Duration(hours: 1)),
+      ),
+    );
+    final api = ProviderApi(
+      credentials: credentials,
+      client: MockClient((request) async {
+        if (request.url.toString() == claudeProfileEndpoint) {
+          return http.Response('{}', 500);
+        }
+        return http.Response('''
+          {
+            "subscriptionType": "pro",
+            "five_hour": {"utilization": 22},
+            "seven_day": {"utilization": 45}
+          }
+          ''', 200);
+      }),
+      now: () => now,
+    );
+
+    final result = await api.fetch(ProviderId.claude);
+
+    expect(result.isSuccess, isTrue);
+    expect(result.identity?.accountHint, isNull);
+    expect(result.identity?.plan, 'Pro');
+  });
 
   test('returns rate limit and Retry-After without response details', () async {
     final now = DateTime(2026, 7, 29, 9);

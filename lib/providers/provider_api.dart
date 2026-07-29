@@ -162,11 +162,16 @@ class ProviderApi implements ProviderGateway {
       );
     }
 
-    final parsed = await _requestUsage(provider, token);
+    final results = await Future.wait<Object>([
+      _requestUsage(provider, token),
+      _withClaudeProfile(token),
+    ]);
+    final parsed = results[0] as ParsedUsage;
+    final identifiedToken = results[1] as TokenBundle;
     return ProviderFetchResult.success(
       provider: provider,
       snapshot: parsed.snapshot,
-      identity: _identity(token, parsed.identity),
+      identity: _identity(identifiedToken, parsed.identity),
     );
   }
 
@@ -288,8 +293,8 @@ class ProviderApi implements ProviderGateway {
                   token.accountId
             : token.accountId,
         accountHint:
-            maskedEmailFromPayload(accessPayload) ??
-            maskedEmailFromPayload(idPayload) ??
+            emailFromPayload(accessPayload) ??
+            emailFromPayload(idPayload) ??
             token.accountHint,
         accountFingerprint:
             identityFingerprintFromPayloads(accessPayload, idPayload) ??
@@ -334,6 +339,59 @@ class ProviderApi implements ProviderGateway {
     } on Object {
       throw const _RequestFailure(ProviderFetchFailureKind.protocol);
     }
+  }
+
+  Future<TokenBundle> _withClaudeProfile(TokenBundle token) async {
+    if (token.accountHint != null && token.accountFingerprint != null) {
+      return token;
+    }
+
+    try {
+      final profile = await _requestClaudeProfile(token);
+      final identified = token.copyWith(
+        accountHint: profile.email,
+        accountFingerprint: identityFingerprint(profile.accountUuid),
+      );
+      final stored = await _credentials.replaceIfCurrent(
+        expected: token,
+        replacement: identified,
+      );
+      if (!stored) {
+        throw const _RequestFailure(ProviderFetchFailureKind.superseded);
+      }
+      return identified;
+    } on _RequestFailure catch (failure) {
+      if (failure.kind == ProviderFetchFailureKind.superseded) {
+        rethrow;
+      }
+      return token;
+    } on Object {
+      return token;
+    }
+  }
+
+  Future<_ClaudeProfile> _requestClaudeProfile(TokenBundle token) async {
+    final response = await _get(Uri.parse(claudeProfileEndpoint), {
+      'Accept': 'application/json',
+      'Authorization': 'Bearer ${token.accessToken}',
+      'Content-Type': 'application/json',
+    });
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    if (decoded is! Map) {
+      throw const FormatException();
+    }
+    final root = decoded.cast<String, Object?>();
+    final rawAccount = root['account'];
+    if (rawAccount is! Map) {
+      throw const FormatException();
+    }
+    final account = rawAccount.cast<String, Object?>();
+    final accountUuid = _nonEmptyText(account['uuid']);
+    final email = _nonEmptyText(account['email']);
+    if (accountUuid == null || email == null || !email.contains('@')) {
+      throw const FormatException();
+    }
+    return _ClaudeProfile(accountUuid: accountUuid, email: email);
   }
 
   Future<ResetCreditsSnapshot> _requestResetCredits(TokenBundle token) async {
@@ -418,6 +476,14 @@ class ProviderApi implements ProviderGateway {
     return value is String && value.isNotEmpty ? value : null;
   }
 
+  String? _nonEmptyText(Object? value) {
+    if (value is! String) {
+      return null;
+    }
+    final text = value.trim();
+    return text.isEmpty ? null : text;
+  }
+
   void dispose() {
     if (_ownsClient) {
       _client.close();
@@ -440,4 +506,11 @@ class _TokenRefresh {
 
   final TokenBundle expected;
   final Future<TokenBundle> future;
+}
+
+class _ClaudeProfile {
+  const _ClaudeProfile({required this.accountUuid, required this.email});
+
+  final String accountUuid;
+  final String email;
 }

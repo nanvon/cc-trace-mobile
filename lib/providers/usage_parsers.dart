@@ -192,28 +192,48 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
 
 ResetCreditsSnapshot parseResetCredits(String input) {
   final root = _object(jsonDecode(input));
-  final available =
+  final reportedAvailable =
       _optionalInteger(root['available_count']) ??
-      _optionalInteger(root['availableCount']) ??
-      0;
+      _optionalInteger(root['availableCount']);
   final credits = root['credits'];
+  final availableCredits = <ResetCreditEntry>[];
   DateTime? earliest;
   if (credits is List<Object?>) {
     for (final value in credits.whereType<Map>()) {
       final row = value.cast<String, Object?>();
-      final status = _text(row['status']);
+      final status = _text(row['status'])?.toLowerCase();
       if (status != null && status != 'available') {
         continue;
       }
       final expiry = _dateValue(row['expires_at'] ?? row['expiresAt']);
+      availableCredits.add(
+        ResetCreditEntry(
+          id: _text(row['id']),
+          resetType: _text(row['reset_type'] ?? row['resetType']),
+          grantedAt: _dateValue(row['granted_at'] ?? row['grantedAt']),
+          expiresAt: expiry,
+        ),
+      );
       if (expiry != null && (earliest == null || expiry.isBefore(earliest))) {
         earliest = expiry;
       }
     }
   }
+  availableCredits.sort((left, right) {
+    final leftExpiry = left.expiresAt;
+    final rightExpiry = right.expiresAt;
+    if (leftExpiry == null) {
+      return rightExpiry == null ? 0 : 1;
+    }
+    if (rightExpiry == null) {
+      return -1;
+    }
+    return leftExpiry.compareTo(rightExpiry);
+  });
   return ResetCreditsSnapshot(
-    availableCount: available,
+    availableCount: reportedAvailable ?? availableCredits.length,
     earliestExpiry: earliest,
+    availableCredits: availableCredits,
   );
 }
 

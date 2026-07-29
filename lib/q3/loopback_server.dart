@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../auth/loopback_bindings.dart';
+import '../auth/oauth_return_page.dart';
 import 'q3_provider.dart';
 
 enum Q3CallbackKind {
@@ -28,31 +30,36 @@ class Q3CallbackEvent {
 
 class Q3LoopbackServer {
   Q3LoopbackServer._({
-    required this._server,
+    required this._servers,
     required this.config,
     required this.expectedState,
   }) {
-    _subscription = _server.listen(
-      _handleRequest,
-      onError: (_) {
-        if (!_events.isClosed) {
-          _events.add(const Q3CallbackEvent(kind: Q3CallbackKind.serverError));
-        }
-      },
-      cancelOnError: false,
-    );
+    _subscriptions = [
+      for (final server in _servers)
+        server.listen(
+          _handleRequest,
+          onError: (_) {
+            if (!_events.isClosed) {
+              _events.add(
+                const Q3CallbackEvent(kind: Q3CallbackKind.serverError),
+              );
+            }
+          },
+          cancelOnError: false,
+        ),
+    ];
   }
 
-  final HttpServer _server;
+  final List<HttpServer> _servers;
   final Q3ProviderConfig config;
   final String expectedState;
   final StreamController<Q3CallbackEvent> _events =
       StreamController<Q3CallbackEvent>.broadcast(sync: true);
 
-  late final StreamSubscription<HttpRequest> _subscription;
+  late final List<StreamSubscription<HttpRequest>> _subscriptions;
   bool _closed = false;
 
-  int get port => _server.port;
+  int get port => _servers.first.port;
 
   Stream<Q3CallbackEvent> get events => _events.stream;
 
@@ -62,13 +69,9 @@ class Q3LoopbackServer {
   }) async {
     for (final port in config.ports) {
       try {
-        final server = await HttpServer.bind(
-          InternetAddress.loopbackIPv4,
-          port,
-          shared: false,
-        );
+        final servers = await bindLoopbackServers(port);
         return Q3LoopbackServer._(
-          server: server,
+          servers: servers,
           config: config,
           expectedState: expectedState,
         );
@@ -178,6 +181,7 @@ class Q3LoopbackServer {
         statusCode: HttpStatus.ok,
         title: '授权回调已接收',
         message: 'CC Trace Mobile 未交换授权码，可以返回应用。',
+        offerReturnToApp: true,
       );
       _emit(
         const Q3CallbackEvent(
@@ -206,6 +210,7 @@ class Q3LoopbackServer {
     required int statusCode,
     required String title,
     required String message,
+    bool offerReturnToApp = false,
   }) async {
     final response = request.response;
     response.statusCode = statusCode;
@@ -216,23 +221,16 @@ class Q3LoopbackServer {
       ..set('X-Content-Type-Options', 'nosniff')
       ..set(
         'Content-Security-Policy',
-        "default-src 'none'; style-src 'unsafe-inline'",
+        "default-src 'none'; style-src 'unsafe-inline'; "
+            "base-uri 'none'; form-action 'none'",
       );
-    response.write('''
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>$title</title>
-  <style>
-    body { font: 16px -apple-system, BlinkMacSystemFont, sans-serif; padding: 32px; }
-    main { max-width: 520px; margin: 0 auto; }
-  </style>
-</head>
-<body><main><h1>$title</h1><p>$message</p></main></body>
-</html>
-''');
+    response.write(
+      buildOAuthReturnPage(
+        title: title,
+        message: message,
+        success: offerReturnToApp,
+      ),
+    );
     await response.close();
   }
 
@@ -247,8 +245,12 @@ class Q3LoopbackServer {
       return;
     }
     _closed = true;
-    await _subscription.cancel();
-    await _server.close(force: true);
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    for (final server in _servers) {
+      await server.close(force: true);
+    }
     await _events.close();
   }
 }

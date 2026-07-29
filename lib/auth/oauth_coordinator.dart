@@ -227,8 +227,7 @@ class OAuthCoordinator implements OAuthGateway {
                   jwtStringClaim(idPayload, 'chatgpt_account_id')
             : null,
         accountHint:
-            maskedEmailFromPayload(accessPayload) ??
-            maskedEmailFromPayload(idPayload),
+            emailFromPayload(accessPayload) ?? emailFromPayload(idPayload),
         accountFingerprint: identityFingerprintFromPayloads(
           accessPayload,
           idPayload,

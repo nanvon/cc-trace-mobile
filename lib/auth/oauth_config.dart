@@ -82,3 +82,5 @@ const providerConfigs = <ProviderId, OAuthConfig>{
 
 const resetCreditsEndpoint =
     'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits';
+
+const claudeProfileEndpoint = 'https://api.anthropic.com/api/oauth/profile';

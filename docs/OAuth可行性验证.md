@@ -385,6 +385,9 @@ code 换 token 与 usage 请求，usage 均返回 HTTP 200 且是 JSON。
   `ChatGPT-Account-Id` 请求头。
 - Claude：跨 `claude.com` authorize 与 `platform.claude.com` token endpoint 的组合成立；
   token 响应含 access / refresh token。access token 不是 JWT，因此没有可记录的 `exp` claim。
+- Claude Code 2.1.212 官方客户端会在登录后请求
+  `GET https://api.anthropic.com/api/oauth/profile`，并从 `account.uuid` /
+  `account.email` 取得身份；移动端已按相同链路实现，真实手机响应仍待 Q3 / Q4 验收。
 - 两份完整 usage 响应与去除 `Set-Cookie` 的响应头仅本地保留在 `fixtures/raw/`（权限 `0600`），
   文件名与完整 scope 见 [`fixtures/采集记录.md`](../fixtures/采集记录.md)。token 响应只记录字段
   结构与字符串长度，未落盘任何值。
@@ -510,7 +513,7 @@ Redirect URI cctrace://callback is not supported by client.
 | Q1 白名单矩阵 | 2026-07-28 | macOS | 浏览器逐个探测 authorize 端点 |
 | Q1 拿到 code | 2026-07-28 | macOS | 本机 loopback server + 用户本人账号真实登录 |
 | Q1 补测（scheme / IP 字面量） | 2026-07-28 | macOS | 同上，两项 Claude 侧均被拒 |
-| Q3 | — | iOS / Android 均未验证 | — |
+| Q3 | 2026-07-29 | Android 观察到 localhost Resolver；修复待验证，iOS 未验证 | Custom Tabs Session / 二段回跳已编码，arm64 Release 已构建 |
 | Q4 基线 | 2026-07-28 | macOS | 系统浏览器 + 本机 loopback；两家 token / usage 均为 200，完整 usage 证据仅本地留存 |
 | Q4 补充实验 | — | macOS | 最小 scope、5 小时 `is_active`、429 限流均未完成 |
 

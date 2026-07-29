@@ -48,7 +48,7 @@ class TokenBundle {
   String? get identityKey {
     final value = accountId;
     if (value != null && value.isNotEmpty) {
-      return _fingerprint(value);
+      return identityFingerprint(value);
     }
     if (accountFingerprint != null && accountFingerprint!.isNotEmpty) {
       return accountFingerprint;
@@ -57,7 +57,7 @@ class TokenBundle {
     if (hint == null || hint.isEmpty) {
       return null;
     }
-    return _fingerprint(hint);
+    return identityFingerprint(hint);
   }
 
   TokenBundle copyWith({
@@ -102,19 +102,24 @@ class TokenBundle {
     if (json['schemaVersion'] != 1) {
       throw const FormatException('Unsupported credential schema.');
     }
+    final accessToken = json['accessToken']! as String;
+    final idToken = json['idToken'] as String?;
     return TokenBundle(
       provider: ProviderId.values.firstWhere(
         (provider) => provider.name == json['provider'],
       ),
-      accessToken: json['accessToken']! as String,
+      accessToken: accessToken,
       refreshToken: json['refreshToken']! as String,
-      idToken: json['idToken'] as String?,
+      idToken: idToken,
       obtainedAt: DateTime.parse(json['obtainedAt']! as String),
       expiresAt: json['expiresAt'] is String
           ? DateTime.parse(json['expiresAt']! as String)
           : null,
       accountId: json['accountId'] as String?,
-      accountHint: json['accountHint'] as String?,
+      accountHint:
+          emailFromPayload(decodeJwtPayload(accessToken)) ??
+          emailFromPayload(decodeJwtPayload(idToken)) ??
+          json['accountHint'] as String?,
       accountFingerprint: json['accountFingerprint'] as String?,
     );
   }
@@ -162,7 +167,7 @@ DateTime? jwtExpiry(Map<String, Object?>? payload) {
       : null;
 }
 
-String? maskedEmailFromPayload(Map<String, Object?>? payload) {
+String? emailFromPayload(Map<String, Object?>? payload) {
   final email = jwtStringClaim(payload, 'email');
   if (email == null) {
     return null;
@@ -171,11 +176,7 @@ String? maskedEmailFromPayload(Map<String, Object?>? payload) {
   if (at <= 0) {
     return null;
   }
-  final local = email.substring(0, at);
-  final prefix = local.length <= 2
-      ? local.substring(0, 1)
-      : local.substring(0, 2);
-  return '$prefix•••${email.substring(at)}';
+  return email;
 }
 
 String? identityFingerprintFromPayloads(
@@ -187,9 +188,11 @@ String? identityFingerprintFromPayloads(
       jwtStringClaim(secondary, 'sub') ??
       jwtStringClaim(primary, 'email') ??
       jwtStringClaim(secondary, 'email');
-  return identity == null || identity.isEmpty ? null : _fingerprint(identity);
+  return identity == null || identity.isEmpty
+      ? null
+      : identityFingerprint(identity);
 }
 
-String _fingerprint(String value) {
+String identityFingerprint(String value) {
   return sha256.convert(utf8.encode(value)).toString().substring(0, 16);
 }

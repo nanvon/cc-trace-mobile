@@ -164,26 +164,74 @@ class ProviderIdentity {
   }
 }
 
+class ResetCreditEntry {
+  const ResetCreditEntry({
+    this.id,
+    this.resetType,
+    this.grantedAt,
+    this.expiresAt,
+  });
+
+  final String? id;
+  final String? resetType;
+  final DateTime? grantedAt;
+  final DateTime? expiresAt;
+
+  Map<String, Object?> toJson() {
+    return {
+      'id': id,
+      'resetType': resetType,
+      'grantedAt': grantedAt?.toUtc().toIso8601String(),
+      'expiresAt': expiresAt?.toUtc().toIso8601String(),
+    };
+  }
+
+  factory ResetCreditEntry.fromJson(Map<String, Object?> json) {
+    return ResetCreditEntry(
+      id: json['id'] as String?,
+      resetType: json['resetType'] as String?,
+      grantedAt: _date(json['grantedAt']),
+      expiresAt: _date(json['expiresAt']),
+    );
+  }
+}
+
 class ResetCreditsSnapshot {
   const ResetCreditsSnapshot({
     required this.availableCount,
     this.earliestExpiry,
+    this.availableCredits = const [],
   });
 
   final int availableCount;
   final DateTime? earliestExpiry;
+  final List<ResetCreditEntry> availableCredits;
 
   Map<String, Object?> toJson() {
     return {
       'availableCount': availableCount,
       'earliestExpiry': earliestExpiry?.toUtc().toIso8601String(),
+      'availableCredits': availableCredits
+          .map((credit) => credit.toJson())
+          .toList(growable: false),
     };
   }
 
   factory ResetCreditsSnapshot.fromJson(Map<String, Object?> json) {
+    final creditsJson = json['availableCredits'];
+    final availableCredits = creditsJson is List<Object?>
+        ? creditsJson
+              .whereType<Map>()
+              .map(
+                (credit) =>
+                    ResetCreditEntry.fromJson(credit.cast<String, Object?>()),
+              )
+              .toList(growable: false)
+        : const <ResetCreditEntry>[];
     return ResetCreditsSnapshot(
       availableCount: (json['availableCount']! as num).toInt(),
       earliestExpiry: _date(json['earliestExpiry']),
+      availableCredits: availableCredits,
     );
   }
 }

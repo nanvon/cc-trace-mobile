@@ -71,9 +71,30 @@ void main() {
     final decoded = decodeJwtPayload('header.$payload.signature');
 
     expect(jwtStringClaim(decoded, 'chatgpt_account_id'), 'account-123');
-    expect(maskedEmailFromPayload(decoded), 'na•••@example.com');
+    expect(emailFromPayload(decoded), 'nanvon@example.com');
     expect(jwtExpiry(decoded), isNotNull);
     expect(identityFingerprintFromPayloads(decoded, null), hasLength(16));
+  });
+
+  test('stored credentials restore the full email from the JWT', () {
+    final payload = base64Url
+        .encode(utf8.encode(jsonEncode({'email': 'nanvon@example.com'})))
+        .replaceAll('=', '');
+
+    final token = TokenBundle.fromJson({
+      'schemaVersion': 1,
+      'provider': 'codex',
+      'accessToken': 'header.$payload.signature',
+      'refreshToken': 'refresh-secret',
+      'idToken': null,
+      'obtainedAt': '2026-07-29T00:00:00.000Z',
+      'expiresAt': null,
+      'accountId': null,
+      'accountHint': 'na•••@example.com',
+      'accountFingerprint': null,
+    });
+
+    expect(token.accountHint, 'nanvon@example.com');
   });
 
   test(

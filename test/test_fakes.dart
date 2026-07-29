@@ -56,7 +56,7 @@ TokenBundle fakeToken(
         ? identity ?? '${provider.name}-account'
         : null,
     accountHint: provider == ProviderId.codex || !opaqueIdentity
-        ? 'na•••@example.com'
+        ? 'nanvon@example.com'
         : null,
     accountFingerprint: provider == ProviderId.claude && !opaqueIdentity
         ? identity
@@ -155,7 +155,7 @@ ProviderFetchResult fakeSuccess(
       primaryActive: primaryActive,
     ),
     identity: ProviderIdentity(
-      accountHint: 'na•••@example.com',
+      accountHint: 'nanvon@example.com',
       plan: provider == ProviderId.codex
           ? 'Plus'
           : includeModel
@@ -169,6 +169,17 @@ ProviderFetchResult fakeSuccess(
             earliestExpiry: (now ?? DateTime(2026, 7, 29, 9)).add(
               const Duration(days: 6),
             ),
+            availableCredits: [
+              for (final offset in [6, 7, 8])
+                ResetCreditEntry(
+                  id: 'credit-$offset',
+                  resetType: 'codex_rate_limits',
+                  grantedAt: now ?? DateTime(2026, 7, 29, 9),
+                  expiresAt: (now ?? DateTime(2026, 7, 29, 9)).add(
+                    Duration(days: offset),
+                  ),
+                ),
+            ],
           )
         : null,
   );

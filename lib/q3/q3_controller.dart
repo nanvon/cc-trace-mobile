@@ -559,6 +559,7 @@ class Q3Controller extends ChangeNotifier {
     return switch (code) {
       'NO_CUSTOM_TAB' => 'custom tabs unavailable',
       'INVALID_ARGUMENT' => 'invalid browser request',
+      'BROWSER_BUSY' => 'browser session busy',
       'BROWSER_OPEN_FAILED' => 'browser open failed',
       'SESSION_START_FAILED' => 'browser session start failed',
       _ => 'browser bridge failed',

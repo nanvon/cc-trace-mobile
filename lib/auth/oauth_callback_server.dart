@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'loopback_bindings.dart';
 import 'oauth_config.dart';
+import 'oauth_return_page.dart';
 
 enum OAuthCallbackKind { accepted, providerCancelled, invalid, serverError }
 
@@ -28,26 +30,29 @@ class OAuthCallbackEvent {
 
 class OAuthCallbackServer {
   OAuthCallbackServer._({
-    required this._server,
+    required this._servers,
     required this.config,
     required this.expectedState,
   }) {
-    _subscription = _server.listen(
-      _handle,
-      onError: (_) => _emit(const OAuthCallbackEvent.serverError()),
-      cancelOnError: false,
-    );
+    _subscriptions = [
+      for (final server in _servers)
+        server.listen(
+          _handle,
+          onError: (_) => _emit(const OAuthCallbackEvent.serverError()),
+          cancelOnError: false,
+        ),
+    ];
   }
 
-  final HttpServer _server;
+  final List<HttpServer> _servers;
   final OAuthConfig config;
   final String expectedState;
   final StreamController<OAuthCallbackEvent> _events =
       StreamController<OAuthCallbackEvent>.broadcast(sync: true);
-  late final StreamSubscription<HttpRequest> _subscription;
+  late final List<StreamSubscription<HttpRequest>> _subscriptions;
   bool _closed = false;
 
-  int get port => _server.port;
+  int get port => _servers.first.port;
   Stream<OAuthCallbackEvent> get events => _events.stream;
 
   static Future<OAuthCallbackServer> bind({
@@ -56,13 +61,9 @@ class OAuthCallbackServer {
   }) async {
     for (final port in config.ports) {
       try {
-        final server = await HttpServer.bind(
-          InternetAddress.loopbackIPv4,
-          port,
-          shared: false,
-        );
+        final servers = await bindLoopbackServers(port);
         return OAuthCallbackServer._(
-          server: server,
+          servers: servers,
           config: config,
           expectedState: expectedState,
         );
@@ -123,23 +124,12 @@ class OAuthCallbackServer {
       ..headers.set('X-Content-Type-Options', 'nosniff')
       ..headers.set(
         'Content-Security-Policy',
-        "default-src 'none'; style-src 'unsafe-inline'",
+        "default-src 'none'; style-src 'unsafe-inline'; "
+            "base-uri 'none'; form-action 'none'",
       )
-      ..write('''
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>$title</title>
-  <style>
-    body { font: 16px -apple-system,BlinkMacSystemFont,sans-serif; padding: 32px; }
-    main { max-width: 520px; margin: 0 auto; }
-  </style>
-</head>
-<body><main><h1>$title</h1><p>$message</p></main></body>
-</html>
-''');
+      ..write(
+        buildOAuthReturnPage(title: title, message: message, success: success),
+      );
     await request.response.close();
   }
 
@@ -154,8 +144,12 @@ class OAuthCallbackServer {
       return;
     }
     _closed = true;
-    await _subscription.cancel();
-    await _server.close(force: true);
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    for (final server in _servers) {
+      await server.close(force: true);
+    }
     await _events.close();
   }
 }

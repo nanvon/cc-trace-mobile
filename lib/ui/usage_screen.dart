@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../app/app_controller.dart';
@@ -71,6 +72,7 @@ class _UsageContent extends StatelessWidget {
                 ] else ...[
                   for (final provider in ProviderId.values) ...[
                     _ProviderCard(
+                      key: ValueKey(provider),
                       controller: controller,
                       state: controller.provider(provider),
                     ),
@@ -293,14 +295,73 @@ class _Onboarding extends StatelessWidget {
   }
 }
 
-class _ProviderCard extends StatelessWidget {
-  const _ProviderCard({required this.controller, required this.state});
+class _ProviderCard extends StatefulWidget {
+  const _ProviderCard({
+    required this.controller,
+    required this.state,
+    super.key,
+  });
 
   final AppController controller;
   final ProviderViewState state;
 
   @override
+  State<_ProviderCard> createState() => _ProviderCardState();
+}
+
+class _ProviderCardState extends State<_ProviderCard>
+    with SingleTickerProviderStateMixin {
+  static const _spring = SpringDescription(
+    mass: 1,
+    stiffness: 300,
+    damping: 34.6410161514,
+  );
+
+  late final AnimationController _expansion = AnimationController(vsync: this);
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(covariant _ProviderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_canExpand(widget.state) && _expanded) {
+      _expanded = false;
+      _expansion.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _expansion.dispose();
+    super.dispose();
+  }
+
+  void _toggleExpansion() {
+    if (!_canExpand(widget.state)) {
+      return;
+    }
+    final target = _expanded ? 0.0 : 1.0;
+    setState(() {
+      _expanded = !_expanded;
+    });
+    if (MediaQuery.of(context).disableAnimations) {
+      _expansion.value = target;
+      return;
+    }
+    _expansion.animateWith(
+      SpringSimulation(
+        _spring,
+        _expansion.value,
+        target,
+        _expansion.velocity,
+        snapToEnd: true,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final state = widget.state;
     final visibleWindows =
         state.snapshot?.windows
             .where((window) => window.kind != QuotaWindowKind.unknown)
@@ -316,14 +377,324 @@ class _ProviderCard extends StatelessWidget {
         ? const <QuotaWindow>[]
         : visibleWindows.where((window) => window.id != primary.id).toList();
     final stale = state.freshness == SnapshotFreshness.stale;
-    final primaryActive = primary?.isActive ?? false;
+    final primaryAvailable = primary == null
+        ? false
+        : _windowHasUsableQuota(primary);
+    final primaryNotStarted = primary != null && _windowNotStarted(primary);
+    final alert = _alertFor(state);
+    final canExpand = _canExpand(state);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(17, 16, 17, 17),
       decoration: BoxDecoration(
         color: context.palette.content1,
         borderRadius: BorderRadius.circular(18),
         boxShadow: _cardShadow(context),
+      ),
+      child: Material(
+        color: context.palette.content1,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Semantics(
+              button: canExpand,
+              expanded: canExpand ? _expanded : null,
+              hint: canExpand ? (_expanded ? '轻点收起时间明细' : '轻点展开时间明细') : null,
+              child: InkWell(
+                onTap: canExpand ? _toggleExpansion : null,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    17,
+                    16,
+                    17,
+                    alert == null ? 17 : 0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            state.provider.displayName,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.27,
+                            ),
+                          ),
+                          if (state.identity?.plan case final String plan) ...[
+                            const SizedBox(width: 8),
+                            _PlanChip(_planLabel(plan)),
+                          ],
+                          const Spacer(),
+                          Flexible(
+                            child: Text(
+                              state.isSignedIn
+                                  ? state.identity?.accountHint ?? '已登录'
+                                  : '未登录',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                color: context.palette.default500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          if (canExpand) ...[
+                            const SizedBox(width: 4),
+                            ExcludeSemantics(
+                              child: SizedBox.square(
+                                dimension: 28,
+                                child: RotationTransition(
+                                  turns: Tween<double>(
+                                    begin: 0,
+                                    end: .5,
+                                  ).animate(_expansion),
+                                  child: Icon(
+                                    Icons.expand_more_rounded,
+                                    size: 22,
+                                    color: context.palette.default500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (primary != null) ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              primaryAvailable
+                                  ? '${_whole(primary.remainingPercent)}%'
+                                  : '--',
+                              style: TextStyle(
+                                color: !primaryAvailable
+                                    ? context.palette.default400
+                                    : stale
+                                    ? context.palette.foreground
+                                    : _quotaColor(
+                                        context,
+                                        primary.remainingPercent,
+                                      ),
+                                fontSize: 38,
+                                fontWeight: FontWeight.w700,
+                                height: .95,
+                                letterSpacing: -1.5,
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(
+                                _windowLabel(primary),
+                                style: TextStyle(
+                                  color: context.palette.default500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Flexible(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child:
+                                    !primaryAvailable ||
+                                        primaryNotStarted ||
+                                        stale
+                                    ? Text(
+                                        !primaryAvailable
+                                            ? '当前不可用'
+                                            : primaryNotStarted
+                                            ? '未开始'
+                                            : _ageLabel(
+                                                state.lastSuccessAt,
+                                                controller.now,
+                                                oldData: true,
+                                              ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.end,
+                                        style: TextStyle(
+                                          color: context.palette.default500,
+                                          fontSize: 13,
+                                        ),
+                                      )
+                                    : _ResetCountdownText(
+                                        resetsAt: primary.resetsAt,
+                                        now: () => controller.now,
+                                        textAlign: TextAlign.end,
+                                        style: TextStyle(
+                                          color: context.palette.default500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 13),
+                        _QuotaProgress(
+                          percent: primaryAvailable
+                              ? primary.remainingPercent
+                              : 0,
+                          color: !primaryAvailable
+                              ? context.palette.default400
+                              : stale
+                              ? context.palette.default400
+                              : _quotaColor(context, primary.remainingPercent),
+                          height: 10,
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '--',
+                              style: TextStyle(
+                                color: context.palette.default400,
+                                fontSize: 38,
+                                fontWeight: FontWeight.w700,
+                                height: .95,
+                                letterSpacing: -1.5,
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(
+                                state.provider == ProviderId.codex
+                                    ? '每周窗口'
+                                    : '5 小时窗口',
+                                style: TextStyle(
+                                  color: context.palette.default500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 13),
+                        Text(
+                          _emptyMessage(state),
+                          style: TextStyle(
+                            color: context.palette.default500,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      for (final window in secondary)
+                        _QuotaSubRow(
+                          window: window,
+                          stale: stale,
+                          now: () => controller.now,
+                        ),
+                      if (state.provider == ProviderId.codex &&
+                          (state.isSignedIn || state.hasSnapshot))
+                        _ResetCreditsRow(credits: state.resetCredits),
+                      if (canExpand)
+                        _CodexTimeDetailsReveal(
+                          animation: _expansion,
+                          expanded: _expanded,
+                          child: _CodexTimeDetails(
+                            windows: visibleWindows,
+                            credits: state.resetCredits,
+                            now: controller.now,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (alert != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(17, 0, 17, 17),
+                child: _StateAlert(
+                  alert: alert,
+                  onPressed: () {
+                    if (alert.action == _AlertAction.login) {
+                      controller.signIn(state.provider);
+                    } else {
+                      controller.refreshProvider(state.provider);
+                    }
+                  },
+                  busy: controller.authorizing == state.provider,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CodexTimeDetailsReveal extends StatelessWidget {
+  const _CodexTimeDetailsReveal({
+    required this.animation,
+    required this.expanded,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final bool expanded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: animation,
+      axisAlignment: -1,
+      child: FadeTransition(
+        opacity: animation,
+        child: AnimatedBuilder(
+          animation: animation,
+          child: ExcludeSemantics(excluding: !expanded, child: child),
+          builder: (context, child) {
+            final progress = animation.value.clamp(0.0, 1.0);
+            return Transform.translate(
+              offset: Offset(0, 6 * (1 - progress)),
+              child: child,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _CodexTimeDetails extends StatelessWidget {
+  const _CodexTimeDetails({
+    required this.windows,
+    required this.credits,
+    required this.now,
+  });
+
+  final List<QuotaWindow> windows;
+  final ResetCreditsSnapshot? credits;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final availableCredits =
+        credits?.availableCredits ?? const <ResetCreditEntry>[];
+    final expiryGroups = _groupCreditExpiries(availableCredits);
+    final unavailableDetailCount = credits == null
+        ? 0
+        : credits!.availableCount > availableCredits.length
+        ? credits!.availableCount - availableCredits.length
+        : 0;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 13),
+      padding: const EdgeInsets.only(top: 13),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: context.palette.divider)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,167 +702,132 @@ class _ProviderCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                state.provider.displayName,
-                style: const TextStyle(
-                  fontSize: 18,
+                '时间明细',
+                style: TextStyle(
+                  color: context.palette.foreground,
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: -.27,
                 ),
               ),
-              if (state.identity?.plan case final String plan) ...[
-                const SizedBox(width: 8),
-                _PlanChip(_planLabel(plan)),
-              ],
               const Spacer(),
-              Flexible(
-                child: Text(
-                  state.isSignedIn
-                      ? state.identity?.accountHint ?? '已登录'
-                      : '未登录',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: TextStyle(
-                    color: context.palette.default500,
-                    fontSize: 12,
-                  ),
+              Text(
+                '本地时间',
+                style: TextStyle(
+                  color: context.palette.default400,
+                  fontSize: 11,
                 ),
               ),
             ],
           ),
-          if (primary != null) ...[
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  primaryActive ? '${_whole(primary.remainingPercent)}%' : '--',
-                  style: TextStyle(
-                    color: !primaryActive
-                        ? context.palette.default400
-                        : stale
-                        ? context.palette.foreground
-                        : _quotaColor(context, primary.remainingPercent),
-                    fontSize: 38,
-                    fontWeight: FontWeight.w700,
-                    height: .95,
-                    letterSpacing: -1.5,
-                  ),
+          const SizedBox(height: 12),
+          _TimeSectionLabel(label: '额度窗口'),
+          if (windows.isEmpty)
+            const _TimeDetailRow(label: '额度窗口', value: '暂时没有可用明细')
+          else
+            for (final window in windows)
+              _TimeDetailRow(
+                label: _windowLabel(window),
+                value: _absoluteTimeLabel(
+                  window.resetsAt,
+                  now,
+                  suffix: '重置',
+                  unknown: '重置时间未知',
                 ),
-                const SizedBox(width: 9),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(
-                    _windowLabel(primary),
-                    style: TextStyle(
-                      color: context.palette.default500,
-                      fontSize: 13,
-                    ),
-                  ),
+              ),
+          const SizedBox(height: 9),
+          _TimeSectionLabel(label: '重置次数'),
+          if (credits == null)
+            const _TimeDetailRow(label: '可用次数', value: '暂时无法读取')
+          else if (credits!.availableCount == 0 && expiryGroups.isEmpty)
+            const _TimeDetailRow(label: '可用次数', value: '当前没有可用次数')
+          else if (expiryGroups.isEmpty)
+            _TimeDetailRow(
+              label: '${credits!.availableCount} 次',
+              value: '接口未提供过期时间',
+            )
+          else ...[
+            for (final group in expiryGroups)
+              _TimeDetailRow(
+                label: '${group.count} 次',
+                value: _absoluteTimeLabel(
+                  group.expiry,
+                  now,
+                  suffix: '过期',
+                  unknown: '过期时间未知',
                 ),
-                const Spacer(),
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: !primaryActive || stale
-                        ? Text(
-                            !primaryActive
-                                ? '当前不可用'
-                                : _ageLabel(
-                                    state.lastSuccessAt,
-                                    controller.now,
-                                    oldData: true,
-                                  ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                            style: TextStyle(
-                              color: context.palette.default500,
-                              fontSize: 13,
-                            ),
-                          )
-                        : _ResetCountdownText(
-                            resetsAt: primary.resetsAt,
-                            now: () => controller.now,
-                            textAlign: TextAlign.end,
-                            style: TextStyle(
-                              color: context.palette.default500,
-                              fontSize: 13,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 13),
-            _QuotaProgress(
-              percent: primaryActive ? primary.remainingPercent : 0,
-              color: !primaryActive
-                  ? context.palette.default400
-                  : stale
-                  ? context.palette.default400
-                  : _quotaColor(context, primary.remainingPercent),
-              height: 10,
-            ),
-          ] else ...[
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '--',
-                  style: TextStyle(
-                    color: context.palette.default400,
-                    fontSize: 38,
-                    fontWeight: FontWeight.w700,
-                    height: .95,
-                    letterSpacing: -1.5,
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(
-                    state.provider == ProviderId.codex ? '每周窗口' : '5 小时窗口',
-                    style: TextStyle(
-                      color: context.palette.default500,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 13),
-            Text(
-              _emptyMessage(state),
-              style: TextStyle(color: context.palette.default500, fontSize: 13),
-            ),
+              ),
+            if (unavailableDetailCount > 0)
+              _TimeDetailRow(
+                label: '$unavailableDetailCount 次',
+                value: '接口未提供过期时间',
+              ),
           ],
-          for (final window in secondary)
-            _QuotaSubRow(
-              window: window,
-              stale: stale,
-              now: () => controller.now,
-            ),
-          if (state.provider == ProviderId.codex &&
-              (state.isSignedIn || state.hasSnapshot))
-            _ResetCreditsRow(credits: state.resetCredits),
-          if (_alertFor(state) case final _AlertData alert)
-            _StateAlert(
-              alert: alert,
-              onPressed: () {
-                if (alert.action == _AlertAction.login) {
-                  controller.signIn(state.provider);
-                } else {
-                  controller.refreshProvider(state.provider);
-                }
-              },
-              busy: controller.authorizing == state.provider,
-            ),
         ],
       ),
     );
   }
+}
+
+class _TimeSectionLabel extends StatelessWidget {
+  const _TimeSectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: context.palette.default500,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeDetailRow extends StatelessWidget {
+  const _TimeDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: context.palette.default600, fontSize: 12.5),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                color: context.palette.default500,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CreditExpiryGroup {
+  const _CreditExpiryGroup({required this.count, required this.expiry});
+
+  final int count;
+  final DateTime? expiry;
 }
 
 class _QuotaSubRow extends StatelessWidget {
@@ -507,7 +843,8 @@ class _QuotaSubRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = window.isActive;
+    final available = _windowHasUsableQuota(window);
+    final notStarted = _windowNotStarted(window);
     final color = stale
         ? context.palette.default400
         : _quotaColor(context, window.remainingPercent);
@@ -527,7 +864,7 @@ class _QuotaSubRow extends StatelessWidget {
           Text(
             _windowLabel(window),
             style: TextStyle(
-              color: active
+              color: available
                   ? context.palette.default500
                   : context.palette.default400,
               fontSize: 12.5,
@@ -536,22 +873,22 @@ class _QuotaSubRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: _QuotaProgress(
-              percent: active ? window.remainingPercent : 0,
+              percent: available ? window.remainingPercent : 0,
               color: color,
               height: 5,
             ),
           ),
           const SizedBox(width: 10),
           Text(
-            active ? '${_whole(window.remainingPercent)}%' : '--',
+            available ? '${_whole(window.remainingPercent)}%' : '--',
             style: TextStyle(
-              color: active ? color : context.palette.default400,
+              color: available ? color : context.palette.default400,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(width: 10),
-          active
+          window.isActive
               ? _ResetCountdownText(
                   resetsAt: window.resetsAt,
                   now: now,
@@ -561,9 +898,11 @@ class _QuotaSubRow extends StatelessWidget {
                   ),
                 )
               : Text(
-                  '当前不可用',
+                  notStarted ? '未开始' : '当前不可用',
                   style: TextStyle(
-                    color: context.palette.default400,
+                    color: notStarted
+                        ? context.palette.default500
+                        : context.palette.default400,
                     fontSize: 12,
                   ),
                 ),
@@ -1108,6 +1447,69 @@ String _windowLabel(QuotaWindow window) {
     QuotaWindowKind.modelWeekly => '${window.displayName ?? '模型'} 每周',
     QuotaWindowKind.unknown => window.displayName ?? '其他窗口',
   };
+}
+
+bool _canExpand(ProviderViewState state) {
+  if (state.provider != ProviderId.codex) {
+    return false;
+  }
+  final hasVisibleWindow =
+      state.snapshot?.windows.any(
+        (window) => window.kind != QuotaWindowKind.unknown,
+      ) ??
+      false;
+  return hasVisibleWindow || state.resetCredits != null;
+}
+
+List<_CreditExpiryGroup> _groupCreditExpiries(List<ResetCreditEntry> credits) {
+  final counts = <DateTime?, int>{};
+  for (final credit in credits) {
+    counts.update(credit.expiresAt, (count) => count + 1, ifAbsent: () => 1);
+  }
+  final groups = counts.entries
+      .map((entry) => _CreditExpiryGroup(count: entry.value, expiry: entry.key))
+      .toList();
+  groups.sort((left, right) {
+    final leftExpiry = left.expiry;
+    final rightExpiry = right.expiry;
+    if (leftExpiry == null) {
+      return rightExpiry == null ? 0 : 1;
+    }
+    if (rightExpiry == null) {
+      return -1;
+    }
+    return leftExpiry.compareTo(rightExpiry);
+  });
+  return groups;
+}
+
+String _absoluteTimeLabel(
+  DateTime? value,
+  DateTime now, {
+  required String suffix,
+  required String unknown,
+}) {
+  if (value == null) {
+    return unknown;
+  }
+  final local = value.toLocal();
+  final localNow = now.toLocal();
+  final date = local.year == localNow.year
+      ? '${local.month}/${local.day}'
+      : '${local.year}/${local.month}/${local.day}';
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$date $hour:$minute $suffix';
+}
+
+bool _windowNotStarted(QuotaWindow window) {
+  return !window.isActive &&
+      (window.kind == QuotaWindowKind.fiveHour ||
+          window.kind == QuotaWindowKind.weekly);
+}
+
+bool _windowHasUsableQuota(QuotaWindow window) {
+  return window.isActive || _windowNotStarted(window);
 }
 
 String _emptyMessage(ProviderViewState state) {

@@ -189,10 +189,14 @@
 
   /* --- 额度卡 --- */
   .mcard { background: var(--content1); border-radius: var(--r-lg); box-shadow: var(--shadow-md); padding: 16px 17px 17px; }
+  .mcard--expandable { cursor: pointer; transition: background-color .12s ease; }
+  .mcard--expandable:active { background: color-mix(in srgb, var(--default-100) 54%, var(--content1)); }
 
   .mcard__hd { display: flex; align-items: center; gap: 8px; }
   .mcard__nm { font-size: 18px; font-weight: 680; letter-spacing: -0.015em; }
   .mcard__acct { margin-left: auto !important; font-size: 12px; color: var(--default-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 42%; }
+  .mcard__chev { width: 28px; height: 28px; display: grid; place-items: center; color: var(--default-500); font-size: 19px; line-height: 1; transition: transform .34s cubic-bezier(.2,.8,.2,1); }
+  .mcard--open .mcard__chev { transform: rotate(180deg); }
 
   .mchip {
     display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-full);
@@ -227,6 +231,18 @@
   .mcredit__n { font-size: 12.5px; color: var(--default-500); }
   .mcredit__v { font-size: 13.5px; font-weight: 660; font-variant-numeric: tabular-nums; }
   .mcredit__x { margin-left: auto; font-size: 12px; color: var(--default-500); font-variant-numeric: tabular-nums; }
+
+  /* --- Codex 点击展开：卡片顶部不动，明细向下长开 --- */
+  .mtime { display: grid; grid-template-rows: 0fr; opacity: 0; transform: translateY(6px); transition: grid-template-rows .34s cubic-bezier(.2,.8,.2,1), opacity .2s ease, transform .34s cubic-bezier(.2,.8,.2,1); }
+  .mcard--open .mtime { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
+  .mtime__clip { overflow: hidden; }
+  .mtime__in { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--divider); }
+  .mtime__hd { display: flex; align-items: center; margin-bottom: 10px; }
+  .mtime__t { font-size: 13.5px; font-weight: 700; }
+  .mtime__tz { margin-left: auto; color: var(--default-400); font-size: 11px; }
+  .mtime__sec { margin-top: 9px; color: var(--default-500); font-size: 11.5px; font-weight: 620; }
+  .mtime__row { display: flex; gap: 14px; padding: 4px 0; font-size: 12.5px; color: var(--default-600); }
+  .mtime__v { margin-left: auto; color: var(--default-500); font-variant-numeric: tabular-nums; text-align: right; }
 
   /* --- 提示条：移动端把「下一步」做成可点的按钮 --- */
   .malert { border-radius: var(--r-md); padding: 12px 13px; display: flex; gap: 10px; background: color-mix(in srgb, var(--tint) 12%, var(--content1)); margin-top: 14px; }
@@ -281,7 +297,8 @@
     <p>
       <b>数据形态按 <code>docs/移动端额度展示要求.md</code> 定的范围，不再沿用桌面合成数据。</b>
       三处关键差异：Codex <b>只有周窗口</b>（Provider 侧已取消 5 小时），因此没有子窗口行；
-      Codex 卡片底部多一行<b>重置次数</b>；Claude 的<b>模型级窗口只有 Max 能看到</b>，Pro 没有。
+      Codex 卡片底部常驻<b>重置次数摘要</b>，点击卡片展开全部已知重置与过期时间；
+      Claude 的<b>模型级窗口只有 Max 能看到</b>，Pro 没有。
     </p>
   </header>
 
@@ -322,7 +339,8 @@
     <p>
       注意 <b>01 里两张卡明显不等高</b>——Codex 只有一个周窗口，Claude 有 5 小时加每周两条。
       这是真实形态，<b>不拉平</b>：拉平意味着给 Codex 造一个不存在的窗口，或者压缩 Claude 的真实信息。
-      <b>05 退避中</b>和 <b>03 模型级窗口</b>是这一版新增的，理由见下方说明。
+      点击任意有数据的 Codex 卡片可以查看展开态；<b>05 退避中</b>和
+      <b>03 模型级窗口</b>是这一版新增的，理由见下方说明。
     </p>
     <div class="row" id="row"></div>
   </section>
@@ -344,7 +362,8 @@
         <b>重置次数</b>（Codex 卡片底部）。它来自<b>另一个接口</b>
         <code>/wham/rate-limit-reset-credits</code>，所以画成独立一行、有自己的失败态：
         看 <b>06</b>，Codex 登录失效时这一行是 <code>--</code>，而不是整张卡消失。
-        官方明确说过它<b>不是钱</b>，是攒下来的重置次数，因此不用货币符号。
+        官方明确说过它<b>不是钱</b>，是攒下来的重置次数，因此不用货币符号。折叠态显示
+        最早过期日；点击 Codex 卡片后向下展开精确的额度重置时间和全部已知 credit 过期时间。
       </li>
       <li>
         <b>退避中下拉被拒绝</b>（05）。<code>/api/oauth/usage</code> 的 429 很凶，
@@ -403,15 +422,12 @@
 
     <h2>这只是稿子</h2>
     <p>
-      纯 HTML/CSS，<b>没有碰仓库里任何应用代码</b>。OAuth 可行性验证的 Q1、Q2 已通过
-      （2026-07-28），<b>登录不存在协议层面的不可行</b>，所以 08 那两颗登录按钮不再是无源之水。
-      但 Q3（真机 loopback）和 Q4（换到的 token 能否调通 usage）还没做，
-      <b>四个问题全部通过之前不开始实现</b>。
+      本文件仍是合成数据原型；正式 Flutter 主屏和静态功能已经实现。Q3 双平台真机矩阵及
+      Q4 剩余实调项仍待完成，因此这里不能当作 Provider 真实响应或真机动画验收证据。
     </p>
     <p>
-      稿子里还有三处等 Q4 才能定死：<code>is_active</code> 的文案、重置次数的真实形态
-      （<code>availableCount</code> 是不是整数、没有 credit 时长什么样）、以及退避的真实间隔——
-      「1 分钟后可再试」是占位数字，不是实测值。
+      仍待真机确认：<code>is_active</code> 的 Provider 精确语义、Reset Credits 独立接口
+      是否稳定返回逐条明细，以及退避的真实间隔——「1 分钟后可再试」是占位数字，不是实测值。
     </p>
     <p>所有数值都是合成数据，不来自 Codex 或 Claude Code。</p>
   </footer>
@@ -452,12 +468,20 @@
   ];
 
   const codexOk = {
-    name: "Codex", plan: "Plus", acct: "na•••@gmail.com",
+    name: "Codex", plan: "Plus", acct: "nanvon@example.com",
     pct: 59, win: "每周窗口", reset: "周一 09:00 重置",
     credit: { n: 3, x: "最早 8/4 过期" },
+    times: {
+      windows: [{ n: "每周窗口", v: "8/4 09:00 重置" }],
+      credits: [
+        { n: "1 次", v: "8/4 09:00 过期" },
+        { n: "1 次", v: "8/5 09:00 过期" },
+        { n: "1 次", v: "8/6 09:00 过期" },
+      ],
+    },
   };
   const claudeOk = {
-    name: "Claude Code", plan: "Pro", acct: "na•••@gmail.com",
+    name: "Claude Code", plan: "Pro", acct: "nanvon@example.com",
     pct: 78, win: "5 小时窗口", reset: "4 小时后重置", subs: CLAUDE_PRO_SUBS,
   };
 
@@ -535,17 +559,31 @@
     </div>`;
   }
 
+  function timeDetails(times) {
+    const rows = (items) => items.map((item) => `<div class="mtime__row">
+      <span>${item.n}</span><span class="mtime__v">${item.v}</span>
+    </div>`).join("");
+    return `<div class="mtime"><div class="mtime__clip"><div class="mtime__in">
+      <div class="mtime__hd"><span class="mtime__t">时间明细</span><span class="mtime__tz">本地时间</span></div>
+      <p class="mtime__sec">额度窗口</p>
+      ${rows(times.windows)}
+      <p class="mtime__sec">重置次数</p>
+      ${rows(times.credits)}
+    </div></div></div>`;
+  }
+
   function card(l) {
     const v = toneVar(l.stale ? "default" : tone(l.pct));
     const has = l.pct !== null;
     const subs = (l.subs ?? []).map((s) => subRow(s, l.stale)).join("");
     const e = l.expl;
 
-    return `<section class="mcard">
+    return `<section class="mcard${l.times ? " mcard--expandable" : ""}"${l.times ? ` role="button" tabindex="0" aria-expanded="false"` : ""}>
       <div class="mcard__hd">
         <h2 class="mcard__nm">${l.name}</h2>
         ${l.plan ? `<span class="mchip">${l.plan}</span>` : ""}
         ${l.acct ? `<span class="mcard__acct">${l.acct}</span>` : ""}
+        ${l.times ? `<span class="mcard__chev" aria-hidden="true">⌄</span>` : ""}
       </div>
       ${has ? `
         <div class="mcard__read">
@@ -563,6 +601,7 @@
       `}
       ${subs}
       ${l.credit ? creditRow(l.credit) : ""}
+      ${l.times ? timeDetails(l.times) : ""}
       ${e ? `<div class="malert" style="--tint:var(--${e.tone})">
         <span class="malert__ic">${ico.warn}</span>
         <div class="malert__b">
@@ -665,6 +704,25 @@
         <span class="cell__m">393 × 852</span>
       </div>`).join("");
   }
+
+  function toggleExpandableCard(card) {
+    const expanded = card.classList.toggle("mcard--open");
+    card.setAttribute("aria-expanded", String(expanded));
+  }
+
+  const row = document.getElementById("row");
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    const card = event.target.closest(".mcard--expandable");
+    if (card) toggleExpandableCard(card);
+  });
+  row.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const card = event.target.closest(".mcard--expandable");
+    if (!card) return;
+    event.preventDefault();
+    toggleExpandableCard(card);
+  });
 
   function bindSeg(id, apply, initial) {
     const root = document.getElementById(id);

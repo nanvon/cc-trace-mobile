@@ -18,7 +18,7 @@ void main() {
       availability: ProviderAvailability.ready,
       isSignedIn: true,
       identity: const ProviderIdentity(
-        accountHint: 'na•••@example.com',
+        accountHint: 'nanvon@example.com',
         plan: 'Plus',
         identityKey: 'identity',
       ),
@@ -26,6 +26,14 @@ void main() {
       resetCredits: ResetCreditsSnapshot(
         availableCount: 3,
         earliestExpiry: now.add(const Duration(days: 6)),
+        availableCredits: [
+          ResetCreditEntry(
+            id: 'credit-1',
+            resetType: 'codex_rate_limits',
+            grantedAt: now,
+            expiresAt: now.add(const Duration(days: 6)),
+          ),
+        ],
       ),
       lastSuccessAt: now,
     );
@@ -38,8 +46,24 @@ void main() {
     expect(restored.snapshot?.primary.remainingPercent, 59);
     expect(restored.identity?.plan, 'Plus');
     expect(restored.resetCredits?.availableCount, 3);
+    expect(restored.resetCredits?.availableCredits.single.id, 'credit-1');
+    expect(restored.resetCredits?.availableCredits.single.expiresAt?.day, 4);
     expect(restored.freshness, SnapshotFreshness.stale);
   });
+
+  test(
+    'quota cache accepts reset credit summaries from the previous schema',
+    () {
+      final restored = ResetCreditsSnapshot.fromJson({
+        'availableCount': 2,
+        'earliestExpiry': '2026-08-04T00:00:00.000Z',
+      });
+
+      expect(restored.availableCount, 2);
+      expect(restored.earliestExpiry?.day, 4);
+      expect(restored.availableCredits, isEmpty);
+    },
+  );
 
   test('credential schema remains compatible when fingerprint is absent', () {
     final token = fakeToken(ProviderId.claude);

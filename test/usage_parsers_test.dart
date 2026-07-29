@@ -117,13 +117,30 @@ void main() {
         "availableCount": 3,
         "credits": [
           {"status": "used", "expiresAt": "2026-07-30T00:00:00Z"},
-          {"status": "available", "expiresAt": "2026-08-04T00:00:00Z"},
-          {"status": "available", "expires_at": "2026-08-02T00:00:00Z"}
+          {
+            "id": "later",
+            "status": "available",
+            "resetType": "codex_rate_limits",
+            "grantedAt": "2026-07-28T00:00:00Z",
+            "expiresAt": "2026-08-04T00:00:00Z"
+          },
+          {
+            "id": "earlier",
+            "status": "available",
+            "reset_type": "codex_rate_limits",
+            "granted_at": "2026-07-27T00:00:00Z",
+            "expires_at": "2026-08-02T00:00:00Z"
+          }
         ]
       }
       ''');
 
     expect(credits.availableCount, 3);
     expect(credits.earliestExpiry?.day, 2);
+    expect(credits.availableCredits, hasLength(2));
+    expect(credits.availableCredits.first.id, 'earlier');
+    expect(credits.availableCredits.first.resetType, 'codex_rate_limits');
+    expect(credits.availableCredits.first.grantedAt?.day, 27);
+    expect(credits.availableCredits.last.expiresAt?.day, 4);
   });
 }
