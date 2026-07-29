@@ -1,6 +1,7 @@
 # OAuth 可行性验证
 
-> 状态：**Q1、Q2 与 Q4 基线已通过（2026-07-28，macOS 命令行 + 浏览器）；Q3 未开始，Q4 的 scope / 限流 / `is_active` 补充实验进行中**
+> 状态：**Q1、Q2 与 Q4 基线已通过（2026-07-28，macOS 命令行 + 浏览器）；Q3 未开始，
+> Flutter 真机验证框架尚未创建，Q4 的 scope / 限流 / `is_active` 补充实验进行中**
 > 这是启动 CC Trace Mobile 之前必须先完成的事。结论出来之前不写界面。
 
 ## 为什么这件事排在最前面
@@ -33,7 +34,8 @@ redirect_uri 白名单原本全部未知，2026-07-28 由 Q1 / Q2 补齐，见�
 
 ### Q1 · redirect_uri 白名单允许什么？（决定性）
 
-这是唯一一个答错就要推翻 [ADR-0001](决策/ADR-0001-独立仓库与技术栈选型.md) 的问题。
+这是唯一一个答错就会否决当前移动端产品形态，并触发
+[ADR-0002](决策/ADR-0002-Flutter移动端技术栈.md) 复审的问题。
 
 Nowdex 安装包里观察到的回调是 loopback：
 
@@ -53,7 +55,7 @@ Claude: http://localhost:54545/callback
 #### 结论：**通过**（2026-07-28，macOS，用户本人账号真实登录）
 
 两个 Provider 都成功收到 authorization code，state 校验通过。code 未换 token、未落盘。
-**不触发 [ADR-0001](决策/ADR-0001-独立仓库与技术栈选型.md) 复审条件。**
+**不触发当前产品形态或 [ADR-0002](决策/ADR-0002-Flutter移动端技术栈.md) 的复审。**
 
 两家的白名单宽严差别很大：
 
@@ -202,6 +204,10 @@ user:sessions:claude_code user:mcp_servers user:file_upload
 
 ### Q3 · 本地 loopback server 在两个平台上都能接住回调吗？
 
+Q3 在 [实施计划的 S1 验证框架](实施计划.md) 内执行：必须是最小 Flutter 应用在真机上的
+真实浏览器与本地 server 链路，macOS 命令行脚本不能替代。该框架尚未创建，且不包含额度 UI、
+Token 持久化或 usage 请求。
+
 - iOS：`ASWebAuthenticationSession` 打开授权页；应用在前台时本地 server 能否稳定监听
 - Android：Chrome Custom Tabs；后台省电策略是否会掐掉监听
 - 端口被占用、用户中途取消、重复回调、超时
@@ -265,8 +271,8 @@ Q2 记录的 authorize 参数里有 `id_token_add_organizations=true`，**推测
 
 | 项 | 规定 | 理由 |
 |---|---|---|
-| 语言 | Rust，独立 bin crate | 与最终实现同语言；PKCE / loopback 代码 Q3 可直接复用 |
-| 位置 | `verify/oauth/`，入库 | `cargo new` 不是 `tauri init`，不触碰骨架阶段纪律 |
+| 语言 | Rust，独立 bin crate | 作为已验证、可复核的协议证据工具；未来 Flutter 应用用 Dart 独立实现 |
+| 位置 | `verify/oauth/`，入库 | 与未来 Flutter 应用隔离，不复用为应用代码 |
 | 结构 | 一个 crate，两个 bin：`q4-codex`、`q4-claude` | 两家的 body 格式、请求头、端口差异过多，合并只会全是分支 |
 | 职责 | **只做网络请求与落盘，不做归一化** | 搬桌面端 normalize 会拖进 contracts 整套依赖，与验证目的无关 |
 
@@ -392,7 +398,8 @@ code 换 token 与 usage 请求，usage 均返回 HTTP 200 且是 JSON。
 
 ## 验证方式
 
-先用**最小脚本**验证，不要在 Tauri 工程里做。Q1 和 Q2 完全可以在桌面命令行上跑通（loopback 在哪都一样），确认协议层可行之后，Q3 才需要真机。
+先用**最小脚本**验证，不要在 Flutter 应用工程里做。Q1 和 Q2 完全可以在桌面命令行上
+跑通（loopback 在哪都一样），确认协议层可行之后，Q3 才需要真机。
 
 顺序：Q2 → Q1 → Q4 → Q3。前三个在电脑上做，只有 Q3 必须上真机。
 
@@ -476,7 +483,7 @@ Redirect URI cctrace://callback is not supported by client.
 
 协议层已经跑通：两个 Provider 都能用官方 CLI 的 client_id 构造出被接受的 authorize
 请求，并通过 loopback 回调拿到 authorization code。**移动端登录不存在协议层面的
-不可行**，ADR-0001 不需要复审。
+不可行**，当前产品形态与 ADR-0002 不需要因此复审。
 
 剩下的风险从「能不能做」变成了「稳不稳、能撑多久」：
 
