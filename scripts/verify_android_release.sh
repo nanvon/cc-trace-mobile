@@ -33,17 +33,27 @@ expected_version_code="${pubspec_version##*+}"
 signature_report="$("$apksigner" verify --verbose --print-certs "$apk_path")"
 actual_certificate_sha256="$(
   printf '%s\n' "$signature_report" |
-    sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+    sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' |
+    head -n 1 |
+    tr -d '[:space:]:' |
+    tr '[:upper:]' '[:lower:]'
 )"
-expected_certificate_sha256="$(tr -d '[:space:]' < "$certificate_pin_file")"
+expected_certificate_sha256="$(
+  tr -d '[:space:]:' < "$certificate_pin_file" |
+    tr '[:upper:]' '[:lower:]'
+)"
 signer_count="$(
   printf '%s\n' "$signature_report" |
-    sed -n 's/^Number of signers: //p'
+    sed -n 's/^[[:space:]]*Number of signers:[[:space:]]*//p' |
+    head -n 1 |
+    tr -d '[:space:]'
 )"
 
+[[ -n "$signer_count" ]] || fail "无法从 apksigner 输出解析 signer 数量"
 [[ "$signer_count" == "1" ]] || fail "APK signer 数量不是 1：${signer_count}"
+[[ -n "$actual_certificate_sha256" ]] || fail "无法从 apksigner 输出解析 APK 证书指纹"
 [[ "$actual_certificate_sha256" == "$expected_certificate_sha256" ]] ||
-  fail "APK 证书不是仓库钉扎的正式证书"
+  fail "APK 证书不是仓库钉扎的正式证书：实际=${actual_certificate_sha256}，期望=${expected_certificate_sha256}"
 
 actual_version_code="$("$apkanalyzer" manifest version-code "$apk_path")"
 actual_version_name="$("$apkanalyzer" manifest version-name "$apk_path")"
