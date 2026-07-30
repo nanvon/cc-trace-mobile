@@ -202,6 +202,104 @@ void main() {
     },
   );
 
+  test('Claude plan comes from the profile organization type', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(
+      TokenBundle(
+        provider: ProviderId.claude,
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        obtainedAt: now,
+        expiresAt: now.add(const Duration(hours: 1)),
+      ),
+    );
+    var profileRequests = 0;
+    final client = MockClient((request) async {
+      if (request.url.toString() == claudeProfileEndpoint) {
+        profileRequests++;
+        return http.Response('''
+          {
+            "account": {"uuid": "account-uuid", "email": "sample@example.com"},
+            "organization": {
+              "uuid": "organization-uuid",
+              "organization_type": "claude_pro",
+              "rate_limit_tier": "default_claude_pro"
+            }
+          }
+          ''', 200);
+      }
+      // usage 顶层没有任何套餐字段，真实响应就是这样。
+      return http.Response('''
+        {
+          "five_hour": {"utilization": 22},
+          "seven_day": {"utilization": 45}
+        }
+        ''', 200);
+    });
+    final api = ProviderApi(
+      credentials: credentials,
+      client: client,
+      now: () => now,
+    );
+
+    final result = await api.fetch(ProviderId.claude);
+
+    expect(result.identity?.plan, 'Pro');
+    // 套餐名随凭据留存，profile 不随每次刷新调用。
+    expect((await credentials.read(ProviderId.claude))?.plan, 'Pro');
+
+    // 第二次取数不该再打 profile：身份和套餐都已齐备。
+    await api.fetch(ProviderId.claude);
+    expect(profileRequests, 1);
+    expect((await api.fetch(ProviderId.claude)).identity?.plan, 'Pro');
+  });
+
+  test('an unmapped organization type leaves the plan empty', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(
+      TokenBundle(
+        provider: ProviderId.claude,
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        obtainedAt: now,
+        expiresAt: now.add(const Duration(hours: 1)),
+      ),
+    );
+    final api = ProviderApi(
+      credentials: credentials,
+      client: MockClient((request) async {
+        if (request.url.toString() == claudeProfileEndpoint) {
+          return http.Response('''
+            {
+              "account": {"uuid": "uuid", "email": "sample@example.com"},
+              "organization": {
+                "uuid": "organization-uuid",
+                "organization_type": "claude_something_new",
+                "rate_limit_tier": "default_claude_max_20x"
+              }
+            }
+            ''', 200);
+        }
+        return http.Response('''
+          {
+            "five_hour": {"utilization": 22},
+            "seven_day": {"utilization": 45}
+          }
+          ''', 200);
+      }),
+      now: () => now,
+    );
+
+    final result = await api.fetch(ProviderId.claude);
+
+    // 宁可不显示，也不把内部枚举名或 rate_limit_tier 摆到界面上。
+    expect(result.isSuccess, isTrue);
+    expect(result.identity?.plan, isNull);
+    expect(result.identity?.accountHint, 'sample@example.com');
+  });
+
   test('Claude usage still succeeds when profile is unavailable', () async {
     final now = DateTime(2026, 7, 29, 9);
     final credentials = MemoryCredentialsStore();

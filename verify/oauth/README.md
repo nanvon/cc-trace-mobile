@@ -33,9 +33,20 @@ cargo run --manifest-path verify/oauth/Cargo.toml --bin q4-claude -- --scope "us
 每次运行会在系统默认浏览器打开 Provider 登录页。完成自己的账号登录后，浏览器会回到本地 loopback
 server；终端只输出非敏感的状态、token 字段结构、JWT 的 `exp` 与 `account_id: present / absent`。
 
+## Claude profile 采集
+
+`q4-claude` 在 usage 之后额外请求一次
+`GET https://api.anthropic.com/api/oauth/profile`，响应同样落到 `fixtures/raw/`
+（文件名 `claude-profile-<时间戳>.json`）。它失败不会中断 usage 基线。
+
+加这一步是为了定位 **Claude 套餐名到底在哪个字段上**：桌面端 cc-trace 读的是
+Claude Code CLI 落盘的 `claudeAiOauth.subscriptionType`，手机上没有那份文件；
+token 端点也不返回该字段。排除过程见
+[移动端额度展示要求 §8.1](../../docs/移动端额度展示要求.md)。
+
 ## 证据留存
 
-- usage 响应体和去除 `Set-Cookie` 的响应头会写进 `fixtures/raw/`，该目录已被 Git 忽略，文件权限为仅当前用户可读写。
+- usage / profile 响应体和去除 `Set-Cookie` 的响应头会写进 `fixtures/raw/`，该目录已被 Git 忽略，文件权限为仅当前用户可读写。
 - token 响应、access token、refresh token、id token、authorization code 和 Authorization 请求头永不写盘、永不输出。
 - 将入库 fixture 前必须人工检查 `fixtures/raw/`，用白名单过滤后再放进 `fixtures/providers/`；不要用黑名单删除字段。
 - 每次采集后把文件名、日期、Provider、账号类型、scope 与结果补到 [`fixtures/采集记录.md`](../../fixtures/采集记录.md)。

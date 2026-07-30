@@ -15,6 +15,7 @@ class TokenBundle {
     this.accountId,
     this.accountHint,
     this.accountFingerprint,
+    this.plan,
   });
 
   final ProviderId provider;
@@ -26,6 +27,10 @@ class TokenBundle {
   final String? accountId;
   final String? accountHint;
   final String? accountFingerprint;
+
+  /// Claude 的套餐名只能从 `/api/oauth/profile` 取得，那个接口不随每次刷新调用，
+  /// 因此和账号提示一样随凭据一起留存。Codex 的套餐名每次 usage 响应都带，不走这里。
+  final String? plan;
 
   bool expiresWithin(DateTime now, Duration skew) {
     final expiry = expiresAt;
@@ -69,6 +74,7 @@ class TokenBundle {
     String? accountId,
     String? accountHint,
     String? accountFingerprint,
+    String? plan,
   }) {
     return TokenBundle(
       provider: provider,
@@ -80,6 +86,7 @@ class TokenBundle {
       accountId: accountId ?? this.accountId,
       accountHint: accountHint ?? this.accountHint,
       accountFingerprint: accountFingerprint ?? this.accountFingerprint,
+      plan: plan ?? this.plan,
     );
   }
 
@@ -95,6 +102,7 @@ class TokenBundle {
       'accountId': accountId,
       'accountHint': accountHint,
       'accountFingerprint': accountFingerprint,
+      'plan': plan,
     };
   }
 
@@ -121,6 +129,8 @@ class TokenBundle {
           emailFromPayload(decodeJwtPayload(idToken)) ??
           json['accountHint'] as String?,
       accountFingerprint: json['accountFingerprint'] as String?,
+      // 追加字段，旧凭据里没有；缺失即视为未取得，下次刷新会补上。
+      plan: json['plan'] as String?,
     );
   }
 

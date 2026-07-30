@@ -181,7 +181,8 @@ class ProviderApi implements ProviderGateway {
   ) {
     return ProviderIdentity(
       accountHint: token.accountHint,
-      plan: responseIdentity?.plan,
+      // Codex 的套餐名来自每次 usage 响应；Claude 的来自随凭据留存的 profile 结果。
+      plan: responseIdentity?.plan ?? token.plan,
       identityKey: token.identityKey,
     );
   }
@@ -299,6 +300,8 @@ class ProviderApi implements ProviderGateway {
         accountFingerprint:
             identityFingerprintFromPayloads(accessPayload, idPayload) ??
             token.accountFingerprint,
+        // 刷新响应不含套餐名，沿用已取得的，不要在刷新时丢掉它。
+        plan: token.plan,
       );
       final stored = await _credentials.replaceIfCurrent(
         expected: token,
@@ -342,7 +345,10 @@ class ProviderApi implements ProviderGateway {
   }
 
   Future<TokenBundle> _withClaudeProfile(TokenBundle token) async {
-    if (token.accountHint != null && token.accountFingerprint != null) {
+    // 套餐名也只有这个接口给，所以它未取得时同样要再请求一次。
+    if (token.accountHint != null &&
+        token.accountFingerprint != null &&
+        token.plan != null) {
       return token;
     }
 
@@ -351,6 +357,7 @@ class ProviderApi implements ProviderGateway {
       final identified = token.copyWith(
         accountHint: profile.email,
         accountFingerprint: identityFingerprint(profile.accountUuid),
+        plan: profile.plan,
       );
       final stored = await _credentials.replaceIfCurrent(
         expected: token,
@@ -391,7 +398,30 @@ class ProviderApi implements ProviderGateway {
     if (accountUuid == null || email == null || !email.contains('@')) {
       throw const FormatException();
     }
-    return _ClaudeProfile(accountUuid: accountUuid, email: email);
+    final rawOrganization = root['organization'];
+    final organization = rawOrganization is Map
+        ? rawOrganization.cast<String, Object?>()
+        : const <String, Object?>{};
+    return _ClaudeProfile(
+      accountUuid: accountUuid,
+      email: email,
+      plan: _claudePlan(_nonEmptyText(organization['organization_type'])),
+    );
+  }
+
+  /// `organization_type` 到套餐名的映射，与 Claude Code 2.1.212 内置的表一致。
+  ///
+  /// 表外的取值一律返回 `null`：宁可不显示套餐，也不把内部枚举名直接摆到界面上。
+  /// 同一对象上的 `rate_limit_tier` 不是套餐名（形如 `default_claude_max_20x`），
+  /// 官方客户端把它单独存成 `rateLimitTier`，这里不拿它兜底。
+  String? _claudePlan(String? organizationType) {
+    return switch (organizationType) {
+      'claude_max' => 'Max',
+      'claude_pro' => 'Pro',
+      'claude_team' => 'Team',
+      'claude_enterprise' => 'Enterprise',
+      _ => null,
+    };
   }
 
   Future<ResetCreditsSnapshot> _requestResetCredits(TokenBundle token) async {
@@ -509,8 +539,13 @@ class _TokenRefresh {
 }
 
 class _ClaudeProfile {
-  const _ClaudeProfile({required this.accountUuid, required this.email});
+  const _ClaudeProfile({
+    required this.accountUuid,
+    required this.email,
+    this.plan,
+  });
 
   final String accountUuid;
   final String email;
+  final String? plan;
 }

@@ -174,10 +174,12 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
     throw const UsageParseException();
   }
   windows[0] = windows[0].copyWith(isPrimary: true);
+  // Claude 的套餐名实际来自 `/api/oauth/profile` 的 `organization.organization_type`
+  // （见 `docs/移动端额度展示要求.md` §8.1）。这里保留 usage 顶层的两个键只是兜底：
+  // 真实响应里没见过它们。不再试 `rate_limit_tier`——那不是套餐名，
+  // 取值形如 `default_claude_max_20x`，官方客户端也把它当成独立概念。
   final plan =
-      _text(root['subscriptionType']) ??
-      _text(root['subscription_type']) ??
-      _text(root['rate_limit_tier']);
+      _text(root['subscriptionType']) ?? _text(root['subscription_type']);
   return ParsedUsage(
     snapshot: QuotaSnapshot(windows: windows, capturedAt: capturedAt),
     identity: plan == null ? null : ProviderIdentity(plan: _titleCase(plan)),

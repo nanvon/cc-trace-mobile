@@ -123,9 +123,25 @@ pub fn run(provider: Provider, scope_override: Option<&str>) -> Result<(), Strin
     print_token_evidence(config, &token_response, &tokens);
 
     let usage = fetch_usage(config, &tokens)?;
-    let evidence = save_usage_evidence(config, &usage)?;
+    let evidence = save_evidence(config, "usage", &usage)?;
     println!("usage 响应已安全留存在 {}", evidence.body.display());
     println!("usage 响应头已安全留存在 {}", evidence.headers.display());
+
+    // Claude 的套餐名不在 token 响应里（见 `docs/移动端额度展示要求.md` §8.1）。
+    // profile 是目前唯一还没排除的来源，顺带采一份，失败不阻断 usage 基线。
+    if config.slug == "claude" {
+        match fetch_claude_profile(&tokens) {
+            Ok(profile) => {
+                let evidence = save_evidence(config, "profile", &profile)?;
+                println!("profile 响应已安全留存在 {}", evidence.body.display());
+                println!(
+                    "profile HTTP {}；套餐名字段路径请在该文件里比对。",
+                    profile.status
+                );
+            }
+            Err(error) => println!("profile 采集未完成：{error}（不影响 usage 基线）"),
+        }
+    }
 
     if !usage.status.is_success() {
         return Err(format!(
@@ -478,13 +494,35 @@ fn fetch_usage(config: ProviderConfig, tokens: &TokenSet) -> Result<UsageRespons
     })
 }
 
+/// Claude Code 官方客户端登录后会请求它；这里只读，不写回任何东西。
+fn fetch_claude_profile(tokens: &TokenSet) -> Result<UsageResponse, String> {
+    let client = http_client()?;
+    let response = client
+        .get("https://api.anthropic.com/api/oauth/profile")
+        .header(AUTHORIZATION, format!("Bearer {}", tokens.access_token))
+        .header(ACCEPT, "application/json")
+        .send()
+        .map_err(|_| "profile 请求未能完成；未输出 token 或响应内容。".to_owned())?;
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = response
+        .text()
+        .map_err(|_| "无法读取 profile 响应；未输出 token 或响应内容。".to_owned())?;
+    Ok(UsageResponse {
+        status,
+        headers,
+        body,
+    })
+}
+
 struct EvidencePaths {
     body: PathBuf,
     headers: PathBuf,
 }
 
-fn save_usage_evidence(
+fn save_evidence(
     config: ProviderConfig,
+    label: &str,
     response: &UsageResponse,
 ) -> Result<EvidencePaths, String> {
     let raw_dir = repository_root().join("fixtures/raw");
@@ -493,8 +531,8 @@ fn save_usage_evidence(
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "系统时间早于 Unix epoch，无法为证据文件命名。".to_owned())?
         .as_millis();
-    let body = raw_dir.join(format!("{}-usage-{timestamp}.json", config.slug));
-    let headers = raw_dir.join(format!("{}-usage-{timestamp}.headers.txt", config.slug));
+    let body = raw_dir.join(format!("{}-{label}-{timestamp}.json", config.slug));
+    let headers = raw_dir.join(format!("{}-{label}-{timestamp}.headers.txt", config.slug));
 
     write_owner_only(&body, &response.body)?;
     write_owner_only(&headers, &safe_headers(response.status, &response.headers))?;

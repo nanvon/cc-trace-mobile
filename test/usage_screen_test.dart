@@ -49,17 +49,18 @@ void main() {
     await controller.bootstrap();
     await _pump(tester, controller);
 
-    expect(find.text('15%'), findsOneWidget);
-    expect(find.text('Opus 每周'), findsOneWidget);
-    expect(find.text('Fable 每周'), findsOneWidget);
+    expect(find.text('15%', findRichText: true), findsOneWidget);
+    expect(find.text('ALL'), findsOneWidget);
+    expect(find.text('OPUS'), findsOneWidget);
+    expect(find.text('FABLE'), findsOneWidget);
     expect(find.text('0%'), findsOneWidget);
     expect(find.text('当前不可用'), findsNothing);
-    expect(find.text('3 次可用'), findsOneWidget);
+    expect(find.text('3 次'), findsOneWidget);
     expect(find.text('Plus'), findsOneWidget);
     expect(find.text('Max'), findsOneWidget);
     expect(find.text('sample@example.com'), findsNWidgets(2));
-    expect(find.text('2 天后重置'), findsOneWidget);
-    expect(find.text('4 小时后重置'), findsOneWidget);
+    expect(find.text('2d'), findsOneWidget);
+    expect(find.text('4h'), findsOneWidget);
     controller.dispose();
   });
 
@@ -81,11 +82,11 @@ void main() {
 
     expect(find.text('还没登录 Codex'), findsOneWidget);
     expect(find.text('登录后才能读到额度'), findsOneWidget);
-    expect(find.text('重置次数'), findsNothing);
+    expect(find.text('RESETS'), findsNothing);
     controller.dispose();
   });
 
-  testWidgets('Codex card expansion is reversible and shows every known time', (
+  testWidgets('Codex card expansion is reversible and shows credit expiries', (
     tester,
   ) async {
     final now = DateTime(2026, 7, 29, 9);
@@ -119,12 +120,13 @@ void main() {
     await tester.tap(card);
     await tester.pumpAndSettle();
     expect(tester.getSize(card).height, greaterThan(collapsedHeight));
-    expect(find.text('时间明细'), findsOneWidget);
-    expect(find.text('本地时间'), findsOneWidget);
-    expect(find.text('7/31 09:00 重置'), findsOneWidget);
-    expect(find.text('8/4 09:00 过期'), findsOneWidget);
-    expect(find.text('8/5 09:00 过期'), findsOneWidget);
-    expect(find.text('8/6 09:00 过期'), findsOneWidget);
+    // 展开态只补充折叠态没有的信息：每批次数各自的过期时刻。
+    // 卡片上已经用倒计时给过的窗口重置时间不再重复列出。
+    expect(find.text('8/4 09:00'), findsOneWidget);
+    expect(find.text('8/5 09:00'), findsOneWidget);
+    expect(find.text('8/6 09:00'), findsOneWidget);
+    expect(find.text('7/31 09:00'), findsNothing);
+    expect(find.text('1 次'), findsNWidgets(3));
     controller.dispose();
   });
 
@@ -145,11 +147,18 @@ void main() {
     await controller.bootstrap();
     await _pump(tester, controller);
 
-    expect(find.text('78%'), findsOneWidget);
-    expect(find.text('4 小时后重置'), findsOneWidget);
+    expect(find.text('78%', findRichText: true), findsOneWidget);
+    expect(find.text('4h'), findsOneWidget);
     expect(find.text('未开始'), findsNothing);
     expect(find.text('当前不可用'), findsNothing);
-    expect(find.text('--'), findsNothing);
+    // 占位符只限定在 Claude 卡片内检查：同屏未登录的 Codex 卡片本来就该显示 `--`。
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey(ProviderId.claude)),
+        matching: find.text('--'),
+      ),
+      findsNothing,
+    );
     controller.dispose();
   });
 
