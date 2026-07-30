@@ -33,7 +33,9 @@ expected_version_code="${pubspec_version##*+}"
 signature_report="$("$apksigner" verify --verbose --print-certs "$apk_path" 2>&1)"
 actual_certificate_sha256="$(
   printf '%s\n' "$signature_report" |
-    sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' |
+    sed -En \
+      -e 's/^[[:space:]]*Signer #[0-9]+ certificate SHA-256 digest:[[:space:]]*//p' \
+      -e 's/^[[:space:]]*V[0-9.]+ Signer: certificate SHA-256 digest:[[:space:]]*//p' |
     head -n 1 |
     tr -d '[:space:]:' |
     tr '[:upper:]' '[:lower:]'
