@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app/app_controller.dart';
 import 'auth/oauth_coordinator.dart';
@@ -11,6 +12,8 @@ import 'ui/usage_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // 透明状态栏只有在 edge-to-edge 下才生效；Android 15 起系统已强制该模式。
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final credentials = SecureCredentialsStore();
   final controller = AppController(
     credentials: credentials,
@@ -58,6 +61,11 @@ class _MainAppState extends State<MainApp> {
             AppearancePreference.light => ThemeMode.light,
             AppearancePreference.dark => ThemeMode.dark,
           },
+          // 无 AppBar 页面的全局默认；有 AppBar 的页面由 appBarTheme 覆盖。
+          builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+            value: systemOverlayStyleFor(Theme.of(context).brightness),
+            child: child ?? const SizedBox.shrink(),
+          ),
           home: UsageScreen(controller: widget.controller),
         );
       },

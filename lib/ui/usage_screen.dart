@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
-import 'package:flutter/services.dart';
 
 import '../app/app_controller.dart';
 import '../domain/quota_models.dart';
@@ -19,24 +18,12 @@ class UsageScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final palette = context.palette;
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: SystemUiOverlayStyle(
-            statusBarColor: isDark ? palette.background : palette.content2,
-            statusBarIconBrightness: isDark
-                ? Brightness.light
-                : Brightness.dark,
-            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-            systemStatusBarContrastEnforced: false,
-          ),
-          child: Scaffold(
-            body: SafeArea(
-              bottom: false,
-              child: controller.initialized && controller.allSignedOut
-                  ? _Onboarding(controller: controller)
-                  : _UsageContent(controller: controller),
-            ),
+        return Scaffold(
+          body: SafeArea(
+            bottom: false,
+            child: controller.initialized && controller.allSignedOut
+                ? _Onboarding(controller: controller)
+                : _UsageContent(controller: controller),
           ),
         );
       },

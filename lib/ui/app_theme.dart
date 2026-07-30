@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 @immutable
 class AppPalette extends ThemeExtension<AppPalette> {
@@ -93,6 +94,24 @@ extension AppPaletteContext on BuildContext {
   AppPalette get palette => Theme.of(this).extension<AppPalette>()!;
 }
 
+/// 状态栏 / 导航栏保持透明，底色由页面自身背景提供，因此只需按主题明暗决定图标颜色。
+/// Android 15 起系统强制 edge-to-edge 并忽略 statusBarColor，填色方案在新系统上无效。
+SystemUiOverlayStyle systemOverlayStyleFor(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    // Android 看图标亮度，iOS 看背景亮度，两者语义相反。
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+    systemStatusBarContrastEnforced: false,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: isDark
+        ? Brightness.light
+        : Brightness.dark,
+    systemNavigationBarContrastEnforced: false,
+  );
+}
+
 ThemeData buildAppTheme(Brightness brightness) {
   final palette = brightness == Brightness.dark
       ? AppPalette.dark
@@ -132,6 +151,9 @@ ThemeData buildAppTheme(Brightness brightness) {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
+      // AppBar 自带 AnnotatedRegion，会盖掉 MaterialApp.builder 里的全局默认，
+      // 且透明背景推不出正确的图标亮度，必须显式指定。
+      systemOverlayStyle: systemOverlayStyleFor(brightness),
     ),
     dividerColor: palette.divider,
     progressIndicatorTheme: ProgressIndicatorThemeData(
