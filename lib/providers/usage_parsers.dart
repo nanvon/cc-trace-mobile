@@ -54,7 +54,6 @@ QuotaWindow _codexWindow(Map<String, Object?> raw, DateTime capturedAt) {
     remainingPercent: QuotaWindow.normalizedRemaining(used),
     resetsAt: _codexReset(raw, capturedAt),
     windowSeconds: seconds,
-    isActive: true,
     isPrimary: false,
   );
 }
@@ -89,7 +88,6 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
         throw const UsageParseException();
       }
       final used = _finite(row['percent']);
-      final active = row['is_active'] as bool? ?? true;
       final reset = _dateValue(row['resets_at']);
       switch (kind) {
         case 'session':
@@ -99,7 +97,6 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
             used: used,
             reset: reset,
             seconds: 18000,
-            active: active,
           );
         case 'weekly_all':
           weekly = _window(
@@ -108,7 +105,6 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
             used: used,
             reset: reset,
             seconds: 604800,
-            active: active,
           );
         case 'weekly_scoped':
           final identity = _scopeIdentity(row['scope']);
@@ -119,7 +115,6 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
             used: used,
             reset: reset,
             seconds: 604800,
-            active: active,
             displayName: identity.$2,
           );
           _upsert(models, candidate);
@@ -131,7 +126,6 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
               kind: QuotaWindowKind.unknown,
               used: used,
               reset: reset,
-              active: active,
             ),
           );
       }
@@ -242,7 +236,6 @@ QuotaWindow _window({
   required QuotaWindowKind kind,
   required double used,
   required DateTime? reset,
-  required bool active,
   int? seconds,
   String? displayName,
 }) {
@@ -254,7 +247,6 @@ QuotaWindow _window({
     remainingPercent: QuotaWindow.normalizedRemaining(used),
     resetsAt: reset,
     windowSeconds: seconds,
-    isActive: active,
     isPrimary: false,
   );
 }
@@ -276,7 +268,6 @@ QuotaWindow? _legacy(
     used: _finite(row['utilization']),
     reset: _dateValue(row['resets_at']),
     seconds: seconds,
-    active: true,
     displayName: displayName,
   );
 }

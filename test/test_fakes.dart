@@ -69,7 +69,6 @@ QuotaSnapshot fakeSnapshot(
   DateTime? now,
   double remaining = 59,
   bool includeModel = false,
-  bool primaryActive = true,
 }) {
   final timestamp = now ?? DateTime(2026, 7, 29, 9);
   if (provider == ProviderId.codex) {
@@ -83,7 +82,6 @@ QuotaSnapshot fakeSnapshot(
           remainingPercent: remaining,
           resetsAt: timestamp.add(const Duration(days: 2)),
           windowSeconds: 604800,
-          isActive: primaryActive,
           isPrimary: true,
         ),
       ],
@@ -99,7 +97,6 @@ QuotaSnapshot fakeSnapshot(
         remainingPercent: 78,
         resetsAt: timestamp.add(const Duration(hours: 4)),
         windowSeconds: 18000,
-        isActive: primaryActive,
         isPrimary: true,
       ),
       QuotaWindow(
@@ -109,7 +106,6 @@ QuotaSnapshot fakeSnapshot(
         remainingPercent: 55,
         resetsAt: timestamp.add(const Duration(days: 3)),
         windowSeconds: 604800,
-        isActive: true,
         isPrimary: false,
       ),
       if (includeModel)
@@ -121,7 +117,6 @@ QuotaSnapshot fakeSnapshot(
           remainingPercent: 23,
           resetsAt: null,
           windowSeconds: 604800,
-          isActive: true,
           isPrimary: false,
         ),
       if (includeModel)
@@ -131,7 +126,6 @@ QuotaSnapshot fakeSnapshot(
           displayName: 'Fable',
           usedPercent: 100,
           remainingPercent: 0,
-          isActive: false,
           isPrimary: false,
         ),
     ],
@@ -143,7 +137,6 @@ ProviderFetchResult fakeSuccess(
   DateTime? now,
   double remaining = 59,
   bool includeModel = false,
-  bool primaryActive = true,
 }) {
   return ProviderFetchResult.success(
     provider: provider,
@@ -152,7 +145,6 @@ ProviderFetchResult fakeSuccess(
       now: now,
       remaining: remaining,
       includeModel: includeModel,
-      primaryActive: primaryActive,
     ),
     identity: ProviderIdentity(
       accountHint: 'sample@example.com',

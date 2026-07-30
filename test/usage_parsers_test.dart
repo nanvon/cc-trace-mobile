@@ -52,21 +52,23 @@ void main() {
   });
 
   group('Claude usage parser', () {
-    test('merges dynamic, legacy, model and inactive windows', () {
-      final parsed = parseClaudeUsage('''
+    test(
+      'ignores is_active while merging dynamic, legacy and model windows',
+      () {
+        final parsed = parseClaudeUsage('''
         {
           "subscriptionType": "max_5x",
           "limits": [
             {
               "kind": "session",
-              "percent": 22,
-              "is_active": true,
+              "percent": 1,
+              "is_active": false,
               "resets_at": "2026-07-29T13:00:00Z"
             },
             {
               "kind": "weekly_all",
               "percent": 45,
-              "is_active": true
+              "is_active": false
             },
             {
               "kind": "weekly_scoped",
@@ -90,18 +92,22 @@ void main() {
         }
         ''', DateTime(2026, 7, 29, 9));
 
-      expect(parsed.snapshot.windows, hasLength(4));
-      expect(parsed.snapshot.primary.kind, QuotaWindowKind.fiveHour);
-      final weekly = parsed.snapshot.windows.firstWhere(
-        (window) => window.kind == QuotaWindowKind.weekly,
-      );
-      expect(weekly.resetsAt, isNotNull);
-      final fable = parsed.snapshot.windows.firstWhere(
-        (window) => window.displayName == 'Fable',
-      );
-      expect(fable.isActive, isFalse);
-      expect(parsed.identity?.plan, 'Max 5x');
-    });
+        expect(parsed.snapshot.windows, hasLength(4));
+        expect(parsed.snapshot.primary.kind, QuotaWindowKind.fiveHour);
+        expect(parsed.snapshot.primary.remainingPercent, 99);
+        expect(parsed.snapshot.primary.resetsAt, isNotNull);
+        final weekly = parsed.snapshot.windows.firstWhere(
+          (window) => window.kind == QuotaWindowKind.weekly,
+        );
+        expect(weekly.resetsAt, isNotNull);
+        final fable = parsed.snapshot.windows.firstWhere(
+          (window) => window.displayName == 'Fable',
+        );
+        expect(fable.remainingPercent, 0);
+        expect(fable.resetsAt, isNull);
+        expect(parsed.identity?.plan, 'Max 5x');
+      },
+    );
 
     test('rejects a response without any supported usage window', () {
       expect(

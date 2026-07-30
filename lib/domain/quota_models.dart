@@ -38,7 +38,6 @@ class QuotaWindow {
     required this.kind,
     required this.usedPercent,
     required this.remainingPercent,
-    required this.isActive,
     required this.isPrimary,
     this.displayName,
     this.resetsAt,
@@ -52,7 +51,6 @@ class QuotaWindow {
   final double remainingPercent;
   final DateTime? resetsAt;
   final int? windowSeconds;
-  final bool isActive;
   final bool isPrimary;
 
   static double normalizedRemaining(double usedPercent) {
@@ -67,7 +65,6 @@ class QuotaWindow {
     double? remainingPercent,
     DateTime? resetsAt,
     int? windowSeconds,
-    bool? isActive,
     bool? isPrimary,
   }) {
     return QuotaWindow(
@@ -78,7 +75,6 @@ class QuotaWindow {
       remainingPercent: remainingPercent ?? this.remainingPercent,
       resetsAt: resetsAt ?? this.resetsAt,
       windowSeconds: windowSeconds ?? this.windowSeconds,
-      isActive: isActive ?? this.isActive,
       isPrimary: isPrimary ?? this.isPrimary,
     );
   }
@@ -92,7 +88,6 @@ class QuotaWindow {
       'remainingPercent': remainingPercent,
       'resetsAt': resetsAt?.toUtc().toIso8601String(),
       'windowSeconds': windowSeconds,
-      'isActive': isActive,
       'isPrimary': isPrimary,
     };
   }
@@ -108,7 +103,6 @@ class QuotaWindow {
       remainingPercent: (json['remainingPercent']! as num).toDouble(),
       resetsAt: _date(json['resetsAt']),
       windowSeconds: (json['windowSeconds'] as num?)?.toInt(),
-      isActive: json['isActive']! as bool,
       isPrimary: json['isPrimary']! as bool,
     );
   }

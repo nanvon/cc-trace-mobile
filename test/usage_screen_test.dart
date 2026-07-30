@@ -27,7 +27,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('renders low quota, model rows and inactive neutral copy', (
+  testWidgets('renders low quota and model rows from returned percentages', (
     tester,
   ) async {
     final now = DateTime(2026, 7, 29, 9);
@@ -52,7 +52,8 @@ void main() {
     expect(find.text('15%'), findsOneWidget);
     expect(find.text('Opus 每周'), findsOneWidget);
     expect(find.text('Fable 每周'), findsOneWidget);
-    expect(find.text('当前不可用'), findsOneWidget);
+    expect(find.text('0%'), findsOneWidget);
+    expect(find.text('当前不可用'), findsNothing);
     expect(find.text('3 次可用'), findsOneWidget);
     expect(find.text('Plus'), findsOneWidget);
     expect(find.text('Max'), findsOneWidget);
@@ -127,7 +128,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('renders an inactive plan-wide window as not started', (
+  testWidgets('renders a Claude primary percentage and reset time', (
     tester,
   ) async {
     final now = DateTime(2026, 7, 29, 9);
@@ -137,8 +138,7 @@ void main() {
       credentials: credentials,
       now: now,
       gateway: FakeProviderGateway(
-        (provider) async =>
-            fakeSuccess(provider, now: now, primaryActive: false),
+        (provider) async => fakeSuccess(provider, now: now),
       ),
     );
 
@@ -146,9 +146,10 @@ void main() {
     await _pump(tester, controller);
 
     expect(find.text('78%'), findsOneWidget);
-    expect(find.text('未开始'), findsOneWidget);
+    expect(find.text('4 小时后重置'), findsOneWidget);
+    expect(find.text('未开始'), findsNothing);
     expect(find.text('当前不可用'), findsNothing);
-    expect(find.text('--'), findsOneWidget);
+    expect(find.text('--'), findsNothing);
     controller.dispose();
   });
 

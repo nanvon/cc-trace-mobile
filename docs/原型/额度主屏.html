@@ -319,13 +319,6 @@
       </div>
     </div>
     <div class="ctl">
-      <span class="ctl__l">is_active:false 文案</span>
-      <div class="seg" id="seg-o">
-        <button type="button" data-v="不适用" aria-pressed="true">不适用</button>
-        <button type="button" data-v="未开始" aria-pressed="false">未开始</button>
-      </div>
-    </div>
-    <div class="ctl">
       <span class="ctl__l">展示台</span>
       <div class="seg" id="seg-p">
         <button type="button" data-v="light" aria-pressed="true">浅</button>
@@ -376,20 +369,11 @@
       </li>
     </ol>
 
-    <h2><code>is_active: false</code> 的文案还没定 ⚠️</h2>
+    <h2><code>is_active</code> 不参与额度文案</h2>
     <p>
-      看 <b>03</b> 里的 Fable 那一行，用顶部的开关切换两种文案。这不是排版偏好，
-      <b>两种解释给用户的判断是相反的</b>：
-    </p>
-    <ol>
-      <li><b>不适用</b>——你的计划里没有这个模型，这行是噪音，也许该整行隐藏</li>
-      <li><b>未开始</b>——窗口还没开始计时，额度是<b>满的</b>，这是好消息</li>
-    </ol>
-    <p>
-      两者在响应里长得一样（都是 0% + 无重置时间），光看 JSON 区分不了。
-      稿子里<b>先按「不适用」画</b>，但没有定论——等 Q4 拿到真实响应再定。
-      同理，百分比这里显示 <code>--</code> 而不是 <code>0%</code>：
-      <b>0% 会被读成额度耗尽</b>，那是四种解释里最糟的一种。
+      2026-07-30 的真实 Claude 响应证明 <code>is_active:false</code> 可以同时出现
+      <b>99% 剩余</b>与正在倒计时的重置时间。因此所有返回有效百分比的窗口都显示实际
+      剩余百分比；有重置时间就倒计时，没有则明确显示「重置时间未知」。
     </p>
 
     <h2>一个没解决的问题：下半屏是空的</h2>
@@ -464,7 +448,7 @@
   const CLAUDE_MAX_SUBS = [
     { n: "每周窗口", p: 55, r: "周三 00:00" },
     { n: "Opus 每周", p: 23, r: null },
-    { n: "Fable 每周", p: 0, r: null, off: true },
+    { n: "Fable 每周", p: 0, r: null },
   ];
 
   const codexOk = {
@@ -528,17 +512,8 @@
     },
   ];
 
-  /* `off` = is_active:false。不上四档色、百分比换成 --，因为 0% 会被读成额度耗尽。
-     `r` 为 null = resets_at 缺失且无旧值可沿用，必须写明未知，不能留空。 */
+  /* `r` 为 null = resets_at 缺失且无旧值可沿用，必须写明未知，不能留空。 */
   function subRow(s, stale) {
-    if (s.off) {
-      return `<div class="msub msub--off">
-        <span class="msub__n">${s.n}</span>
-        <div class="mprog mprog--sub msub__b"></div>
-        <span class="msub__p">--</span>
-        <span class="msub__r">${OFF_LABEL}</span>
-      </div>`;
-    }
     const v = toneVar(stale ? "default" : tone(s.p));
     const bg = v === "foreground" ? "default-400" : v;
     return `<div class="msub">
@@ -692,9 +667,6 @@
 
   let theme = "light";
   let zoom = 0.56;
-  /* is_active:false 的文案未定，两种解释给用户的判断相反。这里做成可切换，
-     等 Q4 验证出真实语义再定死一个。见 docs/移动端额度展示要求.md §4.2 */
-  let OFF_LABEL = "不适用";
 
   function render() {
     document.getElementById("row").innerHTML = STATES.map((s, i) => `
@@ -740,7 +712,6 @@
   const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
   bindSeg("seg-t", (v) => { theme = v; render(); }, prefersDark ? "dark" : "light");
   bindSeg("seg-z", (v) => { zoom = Number(v); render(); }, "0.56");
-  bindSeg("seg-o", (v) => { OFF_LABEL = v; render(); }, "不适用");
   bindSeg("seg-p", (v) => { document.documentElement.dataset.theme = v; }, prefersDark ? "dark" : "light");
 </script>
 </body>

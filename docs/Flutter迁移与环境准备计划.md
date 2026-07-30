@@ -146,7 +146,7 @@ docs/原型/额度主屏.html
 文档改写必须保留以下事实：
 
 - Q1、Q2、Q4 已经得到的 OAuth 结论
-- Q4 仍未完成的 scope、`is_active`、429 与脱敏 fixture 工作
+- Q4 仍未完成的 scope、429、脱敏 fixture 与 `is_active` 协议观察工作
 - Q3 仍需 iOS / Android 真机验证
 - Codex 固定 1455 / 1457 端口、Claude 当前验证端口与取消 / 超时 / 重复回调要求
 - access token、refresh token、authorization code 不进日志、不落盘

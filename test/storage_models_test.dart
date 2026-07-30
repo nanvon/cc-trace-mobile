@@ -65,6 +65,30 @@ void main() {
     },
   );
 
+  test(
+    'quota cache accepts a window written with the former isActive field',
+    () {
+      final now = DateTime(2026, 7, 29, 9);
+      final original = ProviderViewState(
+        provider: ProviderId.claude,
+        refresh: RefreshState.idle,
+        freshness: SnapshotFreshness.live,
+        availability: ProviderAvailability.ready,
+        isSignedIn: true,
+        snapshot: fakeSnapshot(ProviderId.claude, now: now),
+        lastSuccessAt: now,
+      );
+      final cache = original.toCacheJson();
+      final snapshot = (cache['snapshot']! as Map<String, Object?>);
+      final windows = snapshot['windows']! as List<Object?>;
+      (windows.first! as Map<String, Object?>)['isActive'] = false;
+
+      final restored = ProviderViewState.fromCacheJson(cache);
+
+      expect(restored.snapshot?.primary.remainingPercent, 78);
+    },
+  );
+
   test('credential schema remains compatible when fingerprint is absent', () {
     final token = fakeToken(ProviderId.claude, opaqueIdentity: false);
     final json = token.toJson()..remove('accountFingerprint');

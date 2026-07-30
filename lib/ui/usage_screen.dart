@@ -383,10 +383,6 @@ class _ProviderCardState extends State<_ProviderCard>
         ? const <QuotaWindow>[]
         : visibleWindows.where((window) => window.id != primary.id).toList();
     final stale = state.freshness == SnapshotFreshness.stale;
-    final primaryAvailable = primary == null
-        ? false
-        : _windowHasUsableQuota(primary);
-    final primaryNotStarted = primary != null && _windowNotStarted(primary);
     final alert = _alertFor(state);
     final canExpand = _canExpand(state);
 
@@ -475,13 +471,9 @@ class _ProviderCardState extends State<_ProviderCard>
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              primaryAvailable
-                                  ? '${_whole(primary.remainingPercent)}%'
-                                  : '--',
+                              '${_whole(primary.remainingPercent)}%',
                               style: TextStyle(
-                                color: !primaryAvailable
-                                    ? context.palette.default400
-                                    : stale
+                                color: stale
                                     ? context.palette.foreground
                                     : _quotaColor(
                                         context,
@@ -508,20 +500,13 @@ class _ProviderCardState extends State<_ProviderCard>
                             Flexible(
                               child: Padding(
                                 padding: const EdgeInsets.only(bottom: 3),
-                                child:
-                                    !primaryAvailable ||
-                                        primaryNotStarted ||
-                                        stale
+                                child: stale
                                     ? Text(
-                                        !primaryAvailable
-                                            ? '当前不可用'
-                                            : primaryNotStarted
-                                            ? '未开始'
-                                            : _ageLabel(
-                                                state.lastSuccessAt,
-                                                controller.now,
-                                                oldData: true,
-                                              ),
+                                        _ageLabel(
+                                          state.lastSuccessAt,
+                                          controller.now,
+                                          oldData: true,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         textAlign: TextAlign.end,
@@ -545,12 +530,8 @@ class _ProviderCardState extends State<_ProviderCard>
                         ),
                         const SizedBox(height: 13),
                         _QuotaProgress(
-                          percent: primaryAvailable
-                              ? primary.remainingPercent
-                              : 0,
-                          color: !primaryAvailable
-                              ? context.palette.default400
-                              : stale
+                          percent: primary.remainingPercent,
+                          color: stale
                               ? context.palette.default400
                               : _quotaColor(context, primary.remainingPercent),
                           height: 10,
@@ -849,8 +830,6 @@ class _QuotaSubRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final available = _windowHasUsableQuota(window);
-    final notStarted = _windowNotStarted(window);
     final color = stale
         ? context.palette.default400
         : _quotaColor(context, window.remainingPercent);
@@ -869,49 +848,31 @@ class _QuotaSubRow extends StatelessWidget {
         children: [
           Text(
             _windowLabel(window),
-            style: TextStyle(
-              color: available
-                  ? context.palette.default500
-                  : context.palette.default400,
-              fontSize: 12.5,
-            ),
+            style: TextStyle(color: context.palette.default500, fontSize: 12.5),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _QuotaProgress(
-              percent: available ? window.remainingPercent : 0,
+              percent: window.remainingPercent,
               color: color,
               height: 5,
             ),
           ),
           const SizedBox(width: 10),
           Text(
-            available ? '${_whole(window.remainingPercent)}%' : '--',
+            '${_whole(window.remainingPercent)}%',
             style: TextStyle(
-              color: available ? color : context.palette.default400,
+              color: color,
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(width: 10),
-          window.isActive
-              ? _ResetCountdownText(
-                  resetsAt: window.resetsAt,
-                  now: now,
-                  style: TextStyle(
-                    color: context.palette.default500,
-                    fontSize: 12,
-                  ),
-                )
-              : Text(
-                  notStarted ? '未开始' : '当前不可用',
-                  style: TextStyle(
-                    color: notStarted
-                        ? context.palette.default500
-                        : context.palette.default400,
-                    fontSize: 12,
-                  ),
-                ),
+          _ResetCountdownText(
+            resetsAt: window.resetsAt,
+            now: now,
+            style: TextStyle(color: context.palette.default500, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -1506,16 +1467,6 @@ String _absoluteTimeLabel(
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
   return '$date $hour:$minute $suffix';
-}
-
-bool _windowNotStarted(QuotaWindow window) {
-  return !window.isActive &&
-      (window.kind == QuotaWindowKind.fiveHour ||
-          window.kind == QuotaWindowKind.weekly);
-}
-
-bool _windowHasUsableQuota(QuotaWindow window) {
-  return window.isActive || _windowNotStarted(window);
 }
 
 String _emptyMessage(ProviderViewState state) {
