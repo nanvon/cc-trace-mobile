@@ -8,7 +8,7 @@
 - `.github/workflows/release.yml`：推送 `v*` tag 时触发。
 
 CI 会运行 Dart 静态分析、自动化测试、Android Debug 编译和 iOS 无签名 Release 编译。
-Release 会再次执行版本校验、自动化测试与双平台编译门禁，并在全部通过后创建 Draft
+Release 会再次执行版本校验、自动化测试与双平台编译门禁，并在全部通过后创建并公开
 Release。
 
 平台产物边界：
@@ -64,19 +64,20 @@ Release 工作流成功后会：
 1. 确认 tag、`versionName` 和 `versionCode` 格式正确。
 2. 运行静态分析、自动化测试与 iOS 无签名 Release 编译。
 3. 使用正式 Android key 构建和验收 arm64 APK。
-4. 创建 Draft Release。
+4. 创建并公开 Release。
 5. 上传 `CC-Trace-Mobile_<版本>_Android-arm64.apk` 和 `.sha256`。
 
-真实账号与双平台真机验收完成前，Draft Release 不得发布为公开正式 Release。
+公开 Release 只证明构建、签名和上传门禁通过，不等于真实 Provider、OAuth 或双平台真机
+验收完成；这些未完成项仍必须按真机验证计划执行。
 
 ## 4. 首次启用验收
 
 工作流文件进入 `main` 后，先从 GitHub Actions 页面手动运行一次 CI。它成功只证明自动化
 检查链路可用，不改变现有真机验证状态。
 
-Android Secrets 配置完成后，首个 tag 发布需要确认：
+Android Secrets 配置完成后，每个 tag 发布需要确认：
 
-- Release 保持 Draft；
+- Release 已公开且 tag、版本和文件名正确；
 - APK 文件名和版本正确；
 - SHA-256 文件对应上传的 APK；
 - Actions 日志没有 keystore、密码、token 或 authorization code；

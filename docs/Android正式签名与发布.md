@@ -87,7 +87,7 @@ build/app/outputs/flutter-apk/app-release.apk.sha256
 ## 4. GitHub 自动构建
 
 推送与 `pubspec.yaml` 中 `versionName` 完全匹配的 `v*` tag 后，GitHub Actions 会恢复正式
-keystore、执行同一个构建与验收脚本，并把 APK 和 SHA-256 上传到 Draft Release。
+keystore、执行同一个构建与验收脚本，并把 APK 和 SHA-256 上传到公开 Release。
 
 GitHub Secrets 名称、tag 规则、iOS 无签名编译边界与首次启用验收见
 [GitHub 自动构建与发布](GitHub自动构建与发布.md)。

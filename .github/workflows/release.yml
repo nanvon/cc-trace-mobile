@@ -133,7 +133,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Create draft release
+    name: Create release
     needs: [prepare, ios, android]
     runs-on: ubuntu-latest
     permissions:
@@ -148,13 +148,12 @@ jobs:
           name: android-release-assets
           path: release-assets
 
-      - name: Create draft release and upload assets
+      - name: Create release and upload assets
         run: |
           if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --verify-tag \
-              --draft \
               --generate-notes \
               --title "CC Trace Mobile ${GITHUB_REF_NAME}" \
               --notes "Android：正式签名 arm64 APK，versionCode ${VERSION_CODE}。iOS：无签名 Release 编译已通过；受免费 Apple ID 签名边界限制，不提供可分发 IPA。"

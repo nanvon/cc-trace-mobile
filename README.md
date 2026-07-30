@@ -62,7 +62,8 @@ Provider 对额度接口的限流可能比较严格，所以应用刻意刷得�
 
 ## 安装
 
-**目前没有可下载的安装包。** 两个平台都需要自己用 Flutter 从源码构建：
+Android 正式构建成功后，可从 GitHub Releases 下载 arm64 APK；iOS 仍需要自己用 Flutter
+从源码构建：
 
 ```bash
 flutter pub get
@@ -74,7 +75,7 @@ iOS 侧只支持用**免费 Apple ID** 自签安装，每 7 天需要重新签�
 Apple 开发者账号，所以不会有 App Store 版本，也不会有 TestFlight。
 
 GitHub Actions 已配置为在 push `main` / Pull Request 时自动检查，并在推送与
-`pubspec.yaml` 版本匹配的 `v*` tag 后生成 Android Draft Release。iOS 会执行无签名 Release
+`pubspec.yaml` 版本匹配的 `v*` tag 后生成公开 Android Release。iOS 会执行无签名 Release
 编译门禁，但不会产生可分发 IPA。配置与发布步骤见
 [GitHub 自动构建与发布](docs/GitHub自动构建与发布.md)。
 
@@ -85,7 +86,7 @@ GitHub Actions 已配置为在 push `main` / Pull Request 时自动检查，并�
 | 主屏、登录、安全存储、刷新调度 | 代码已完成 |
 | 静态检查与自动化测试 | 已通过 |
 | Android Release APK 构建 | 已跑通 |
-| GitHub Actions 自动构建 | 已配置，尚未在 GitHub 首次运行 |
+| GitHub Actions 自动构建 | 已配置，Android Release 已在 GitHub Runner 构建通过 |
 | iOS 构建 | 被开发机的 Xcode 平台组件缺失阻塞 |
 | 真实账号 + 真机完整验证 | **未做** |
 
