@@ -30,7 +30,7 @@ pubspec_version="$(sed -n 's/^version:[[:space:]]*//p' "$repo_root/pubspec.yaml"
 expected_version_name="${pubspec_version%+*}"
 expected_version_code="${pubspec_version##*+}"
 
-signature_report="$("$apksigner" verify --verbose --print-certs "$apk_path")"
+signature_report="$("$apksigner" verify --verbose --print-certs "$apk_path" 2>&1)"
 actual_certificate_sha256="$(
   printf '%s\n' "$signature_report" |
     sed -n 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*//p' |
@@ -51,7 +51,10 @@ signer_count="$(
 
 [[ -n "$signer_count" ]] || fail "无法从 apksigner 输出解析 signer 数量"
 [[ "$signer_count" == "1" ]] || fail "APK signer 数量不是 1：${signer_count}"
-[[ -n "$actual_certificate_sha256" ]] || fail "无法从 apksigner 输出解析 APK 证书指纹"
+if [[ -z "$actual_certificate_sha256" ]]; then
+  printf 'apksigner 输出：\n%s\n' "$signature_report" >&2
+  fail "无法从 apksigner 输出解析 APK 证书指纹"
+fi
 [[ "$actual_certificate_sha256" == "$expected_certificate_sha256" ]] ||
   fail "APK 证书不是仓库钉扎的正式证书：实际=${actual_certificate_sha256}，期望=${expected_certificate_sha256}"
 
