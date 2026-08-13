@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../domain/quota_models.dart';
+import '../network/abortable_http.dart';
 import '../q3/browser_bridge.dart';
 import 'oauth_callback_server.dart';
 import 'oauth_config.dart';
@@ -157,40 +158,30 @@ class OAuthCoordinator implements OAuthGateway {
   }) async {
     late final http.Response response;
     try {
-      response = switch (config.provider) {
-        ProviderId.codex =>
-          await _client
-              .post(
-                Uri.parse(config.tokenEndpoint),
-                headers: const {'Accept': 'application/json'},
-                body: {
-                  'grant_type': 'authorization_code',
-                  'code': code,
-                  'redirect_uri': redirectUri.toString(),
-                  'client_id': config.clientId,
-                  'code_verifier': material.verifier,
-                },
-              )
-              .timeout(const Duration(seconds: 15)),
-        ProviderId.claude =>
-          await _client
-              .post(
-                Uri.parse(config.tokenEndpoint),
-                headers: const {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-                body: jsonEncode({
-                  'grant_type': 'authorization_code',
-                  'code': code,
-                  'redirect_uri': redirectUri.toString(),
-                  'client_id': config.clientId,
-                  'code_verifier': material.verifier,
-                  'state': material.state,
-                }),
-              )
-              .timeout(const Duration(seconds: 15)),
-      };
+      final request = http.Request(
+        'POST',
+        Uri.parse(config.tokenEndpoint),
+      )..headers.addAll(const {'Accept': 'application/json'});
+      if (config.provider == ProviderId.codex) {
+        request.bodyFields = {
+          'grant_type': 'authorization_code',
+          'code': code,
+          'redirect_uri': redirectUri.toString(),
+          'client_id': config.clientId,
+          'code_verifier': material.verifier,
+        };
+      } else {
+        request.headers['Content-Type'] = 'application/json';
+        request.body = jsonEncode({
+          'grant_type': 'authorization_code',
+          'code': code,
+          'redirect_uri': redirectUri.toString(),
+          'client_id': config.clientId,
+          'code_verifier': material.verifier,
+          'state': material.state,
+        });
+      }
+      response = await sendWithTimeout(_client, request);
     } on Object {
       throw const OAuthFailure(OAuthFailureKind.tokenExchange);
     }

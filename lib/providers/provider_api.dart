@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../auth/oauth_config.dart';
 import '../auth/token_bundle.dart';
 import '../domain/quota_models.dart';
+import '../network/abortable_http.dart';
 import '../storage/credentials_store.dart';
 import 'usage_parsers.dart';
 
@@ -218,33 +219,25 @@ class ProviderApi implements ProviderGateway {
     final config = providerConfigs[token.provider]!;
     late final http.Response response;
     try {
-      response = switch (token.provider) {
-        ProviderId.codex =>
-          await _client
-              .post(
-                Uri.parse(config.tokenEndpoint),
-                headers: const {'Accept': 'application/json'},
-                body: {
-                  'grant_type': 'refresh_token',
-                  'refresh_token': token.refreshToken,
-                  'client_id': config.clientId,
-                  'scope': 'openid profile email',
-                },
-              )
-              .timeout(const Duration(seconds: 15)),
-        ProviderId.claude =>
-          await _client
-              .post(
-                Uri.parse(config.tokenEndpoint),
-                headers: const {'Accept': 'application/json'},
-                body: {
-                  'grant_type': 'refresh_token',
-                  'refresh_token': token.refreshToken,
-                  'client_id': config.clientId,
-                },
-              )
-              .timeout(const Duration(seconds: 15)),
-      };
+      final request = http.Request(
+        'POST',
+        Uri.parse(config.tokenEndpoint),
+      )..headers.addAll(const {'Accept': 'application/json'});
+      if (token.provider == ProviderId.codex) {
+        request.bodyFields = {
+          'grant_type': 'refresh_token',
+          'refresh_token': token.refreshToken,
+          'client_id': config.clientId,
+          'scope': 'openid profile email',
+        };
+      } else {
+        request.bodyFields = {
+          'grant_type': 'refresh_token',
+          'refresh_token': token.refreshToken,
+          'client_id': config.clientId,
+        };
+      }
+      response = await sendWithTimeout(_client, request);
     } on TimeoutException {
       throw const _RequestFailure(ProviderFetchFailureKind.offline);
     } on SocketException {
@@ -442,9 +435,8 @@ class ProviderApi implements ProviderGateway {
   Future<http.Response> _get(Uri uri, Map<String, String> headers) async {
     late final http.Response response;
     try {
-      response = await _client
-          .get(uri, headers: headers)
-          .timeout(const Duration(seconds: 15));
+      final request = http.Request('GET', uri)..headers.addAll(headers);
+      response = await sendWithTimeout(_client, request);
     } on TimeoutException {
       throw const _RequestFailure(ProviderFetchFailureKind.offline);
     } on SocketException {

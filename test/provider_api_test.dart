@@ -512,4 +512,30 @@ void main() {
       );
     },
   );
+
+  test('maps a locally aborted usage request to offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(
+      TokenBundle(
+        provider: ProviderId.codex,
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        obtainedAt: now,
+        expiresAt: now.add(const Duration(hours: 1)),
+        accountId: 'account-id',
+      ),
+    );
+    final api = ProviderApi(
+      credentials: credentials,
+      client: MockClient((request) async {
+        throw http.RequestAbortedException(request.url);
+      }),
+      now: () => now,
+    );
+
+    final result = await api.fetch(ProviderId.codex);
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
 }
