@@ -68,6 +68,10 @@ private final class OAuthBrowserBridge: NSObject,
     case "close":
       closeActiveSession(programmatically: true)
       result(nil)
+    case "release":
+      // 终态资源释放；与 close 的差别只是语义，不新增 iOS 行为。
+      closeActiveSession(programmatically: true)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }

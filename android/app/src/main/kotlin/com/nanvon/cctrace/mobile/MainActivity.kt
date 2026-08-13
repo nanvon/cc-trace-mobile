@@ -74,6 +74,10 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "open" -> openCustomTab(call.argument<String>("url"), result)
                     "close" -> returnToApp(result)
+                    "release" -> {
+                        releaseBrowserResources()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -194,6 +198,9 @@ class MainActivity : FlutterActivity() {
         try {
             startActivity(returnIntent)
             result.success(null)
+            // OAuth 已进入终态（调用方只在成功 / 取消 / 超时 / 失败后 close），
+            // 带回前台的职责完成后即可释放浏览器资源。
+            releaseBrowserResources()
         } catch (_: RuntimeException) {
             result.error(
                 "APP_RETURN_FAILED",
@@ -253,6 +260,19 @@ class MainActivity : FlutterActivity() {
         customTabsServiceBound = false
         customTabsSession = null
         customTabsPackage = null
+    }
+
+    /// OAuth 进入终态后幂等释放浏览器资源：清理 pending 状态、终止未完成的
+    /// pending open（避免 MethodChannel result 悬挂）并解绑 Custom Tabs。
+    /// 授权进行中保留绑定有助于会话稳定，因此 release 只能由终态或 dispose 触发。
+    private fun releaseBrowserResources() {
+        browserLaunchPending = false
+        browserPauseObserved = false
+        failPendingBrowserOpen(
+            "BROWSER_SESSION_CLOSED",
+            "CC Trace closed the browser session before it connected.",
+        )
+        disconnectCustomTabsService()
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

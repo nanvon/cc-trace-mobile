@@ -211,6 +211,9 @@ class _DelayedLoopbackBrowser implements BrowserLauncher {
   Future<void> close() async {}
 
   @override
+  Future<void> release() async {}
+
+  @override
   Future<void> dispose() => _events.close();
 }
 
