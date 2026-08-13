@@ -62,7 +62,7 @@ flutter run --release   # 连上设备,用你自己的 Apple ID 签名
 ```
 
 > [!NOTE]
-> iOS 自签到真机这条路径尚未完整验证;CI 持续验证的是 `flutter build ios --release --no-codesign` 能编译通过。Android 已在真机完成登录与额度实调的端到端验证。
+> iOS 自签到真机这条路径尚未完整验证;CI 持续验证的是 `flutter build ios --release --no-codesign` 能编译通过。Android 已在真机完成登录与额度实调的端到端验证(具体版本、设备与场景见 [当前验证状态](docs/当前验证状态.md))。
 
 ## 🔒 数据与安全
 
