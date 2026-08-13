@@ -117,7 +117,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               : SnapshotFreshness.stale,
           availability: ProviderAvailability.ready,
           identity: ProviderIdentity(
-            accountHint: token.accountHint ?? previous.identity?.accountHint,
+            // 完整账号只从安全凭据恢复，不从未知来源的普通缓存恢复邮箱。
+            accountHint: token.accountHint,
             plan: previous.identity?.plan,
             identityKey: tokenIdentity ?? cachedIdentity,
           ),
@@ -133,7 +134,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
     await Future.wait(
       ProviderId.values
-          .where(_isDue)
+          .where(_canAutoRefresh)
           .map((provider) => refreshProvider(provider)),
     );
   }
@@ -197,6 +198,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final last = state.lastSuccessAt;
     return last == null ||
         !_now().isBefore(last.add(_settings.refreshInterval.duration));
+  }
+
+  /// 自动调度（一分钟检查、回到前台、启动）是否真的会发起刷新。
+  ///
+  /// 在 [_isDue] 之外再排除退避期（`_providerHeldUntil`）和进行中的请求，
+  /// 让退避期间的一分钟检查只做常数级判断：不进入 `refreshProvider`、
+  /// 不展示自动提示、不触发 `notifyListeners()`。手动刷新不走这里，
+  /// 保持现有“退避中拒绝并显示剩余时间”的行为。
+  bool _canAutoRefresh(ProviderId provider) {
+    if (!_isDue(provider)) {
+      return false;
+    }
+    final held = _providerHeldUntil[provider];
+    if (held != null && _now().isBefore(held)) {
+      return false;
+    }
+    return !_refreshing.containsKey(provider);
   }
 
   Future<void> refreshAll({bool manual = false}) async {
@@ -576,7 +594,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     _scheduleTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (_foreground) {
-        final due = ProviderId.values.where(_isDue);
+        final due = ProviderId.values.where(_canAutoRefresh);
         for (final provider in due) {
           unawaited(refreshProvider(provider));
         }
@@ -615,7 +633,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     _foreground = state == AppLifecycleState.resumed;
     if (_foreground) {
       _restartSchedule();
-      final due = ProviderId.values.where(_isDue);
+      final due = ProviderId.values.where(_canAutoRefresh);
       for (final provider in due) {
         unawaited(refreshProvider(provider));
       }
