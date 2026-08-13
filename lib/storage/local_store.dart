@@ -64,7 +64,7 @@ class SharedPreferencesLocalStore implements LocalStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, Object?> ||
-          decoded['schemaVersion'] != 1 ||
+          decoded['schemaVersion'] is! int ||
           decoded['providers'] is! List<Object?>) {
         await _preferences.remove(_quotaCacheKey);
         return [];
@@ -86,7 +86,7 @@ class SharedPreferencesLocalStore implements LocalStore {
     return _preferences.setString(
       _quotaCacheKey,
       jsonEncode({
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'providers': cacheable
             .map((provider) => provider.toCacheJson())
             .toList(),

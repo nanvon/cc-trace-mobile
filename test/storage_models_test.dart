@@ -5,6 +5,9 @@ import 'package:cc_trace_mobile/domain/quota_models.dart';
 import 'package:cc_trace_mobile/storage/credentials_store.dart';
 import 'package:cc_trace_mobile/storage/local_store.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'test_fakes.dart';
 
@@ -111,5 +114,78 @@ void main() {
     await credentials.write(fakeToken(ProviderId.codex));
     await local.prepareInstall(credentials);
     expect(await credentials.read(ProviderId.codex), isNotNull);
+  });
+
+  test('cache v2 never serializes the account hint', () {
+    final now = DateTime(2026, 7, 29, 9);
+    final original = ProviderViewState(
+      provider: ProviderId.codex,
+      refresh: RefreshState.idle,
+      freshness: SnapshotFreshness.live,
+      availability: ProviderAvailability.ready,
+      isSignedIn: true,
+      identity: const ProviderIdentity(
+        accountHint: 'sample@example.com',
+        plan: 'Plus',
+        identityKey: 'identity',
+      ),
+      snapshot: fakeSnapshot(ProviderId.codex, now: now),
+      lastSuccessAt: now,
+    );
+
+    final encoded = jsonEncode(original.toCacheJson());
+
+    expect(encoded, isNot(contains('sample@example.com')));
+    final decoded = jsonDecode(encoded) as Map<String, Object?>;
+    final restored = ProviderViewState.fromCacheJson(decoded);
+    expect(restored.identity?.plan, 'Plus');
+    expect(restored.identity?.identityKey, 'identity');
+    expect(restored.identity?.accountHint, isNull);
+  });
+
+  test('cache v1 stays readable and drops the email on upgrade', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final memory = InMemorySharedPreferencesAsync.empty();
+    SharedPreferencesAsyncPlatform.instance = memory;
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+    final preferences = SharedPreferencesAsync();
+    final local = SharedPreferencesLocalStore(preferences: preferences);
+    final v1Cache = jsonEncode({
+      'schemaVersion': 1,
+      'providers': [
+        ProviderViewState(
+          provider: ProviderId.codex,
+          refresh: RefreshState.idle,
+          freshness: SnapshotFreshness.live,
+          availability: ProviderAvailability.ready,
+          isSignedIn: true,
+          identity: const ProviderIdentity(
+            accountHint: 'sample@example.com',
+            plan: 'Plus',
+            identityKey: 'identity',
+          ),
+          snapshot: fakeSnapshot(ProviderId.codex, now: now),
+          lastSuccessAt: now,
+        ).toCacheJson(),
+      ],
+    });
+    await preferences.setString('quotaCache.v1', v1Cache);
+
+    final restored = await local.readQuotaCache();
+
+    expect(restored, hasLength(1));
+    expect(restored.single.identity?.identityKey, 'identity');
+    expect(restored.single.identity?.plan, 'Plus');
+    expect(restored.single.identity?.accountHint, isNull);
+
+    await local.writeQuotaCache(restored);
+    final writtenRaw = await preferences.getString('quotaCache.v1');
+    expect(writtenRaw, isNotNull);
+    final written = jsonDecode(writtenRaw!) as Map<String, Object?>;
+    expect(written['schemaVersion'], 2);
+    expect(
+      jsonEncode(written),
+      isNot(contains('sample@example.com')),
+    );
   });
 }

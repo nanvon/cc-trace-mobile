@@ -137,13 +137,14 @@ class QuotaSnapshot {
 class ProviderIdentity {
   const ProviderIdentity({this.accountHint, this.plan, this.identityKey});
 
+  /// 完整邮箱只作为 UI 提示来源，属于可识别个人信息；普通额度缓存
+  /// （quotaCache v2）不再序列化它，只从安全凭据恢复。
   final String? accountHint;
   final String? plan;
   final String? identityKey;
 
   Map<String, Object?> toJson() {
     return {
-      'accountHint': accountHint,
       'plan': plan,
       'identityKey': identityKey,
     };
@@ -151,7 +152,6 @@ class ProviderIdentity {
 
   factory ProviderIdentity.fromJson(Map<String, Object?> json) {
     return ProviderIdentity(
-      accountHint: json['accountHint'] as String?,
       plan: json['plan'] as String?,
       identityKey: json['identityKey'] as String?,
     );
