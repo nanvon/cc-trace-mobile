@@ -47,6 +47,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   bool _initialized = false;
   bool _foreground = true;
   ProviderId? _authorizing;
+  OAuthPhase? _authPhase;
   DateTime? _lastManualRefresh;
   String? _notice;
   Timer? _scheduleTimer;
@@ -55,6 +56,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   AppSettings get settings => _settings;
   bool get initialized => _initialized;
   ProviderId? get authorizing => _authorizing;
+  OAuthPhase? get authPhase => _authPhase;
   String? get notice => _notice;
   DateTime get now => _now();
   Iterable<ProviderViewState> get providers => _providers.values;
@@ -485,16 +487,26 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return Duration(seconds: seconds[index]);
   }
 
-  Future<void> signIn(ProviderId provider) async {
+  /// [selector] 由界面提供：每次登录都让用户挑浏览器，不沿用系统默认，
+  /// 也不记住上次选择——上一次能用不代表这一次那个浏览器还登录着。
+  Future<void> signIn(ProviderId provider, {BrowserSelector? selector}) async {
     if (_authorizing != null) {
       return;
     }
     final generation = _advanceAuthGeneration(provider);
     _authorizing = provider;
+    _authPhase = OAuthPhase.preparing;
     _clearNotice();
     notifyListeners();
+    final phases = _oauth.phases.listen((phase) {
+      if (_authorizing != provider) {
+        return;
+      }
+      _authPhase = phase;
+      notifyListeners();
+    });
     try {
-      final bundle = await _oauth.signIn(provider);
+      final bundle = await _oauth.signIn(provider, selector: selector);
       if (!_isCurrentAuthGeneration(provider, generation)) {
         return;
       }
@@ -536,11 +548,21 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       _scheduleNoticeClear();
       notifyListeners();
     } finally {
+      await phases.cancel();
       if (_authorizing == provider) {
         _authorizing = null;
+        _authPhase = null;
         notifyListeners();
       }
     }
+  }
+
+  /// 用户在等待面板上主动放弃。
+  void cancelSignIn() => _oauth.cancel();
+
+  /// 授权页白屏或被误关时换个浏览器重开，不重启整轮登录。
+  Future<void> reopenSignInBrowser({BrowserSelector? selector}) {
+    return _oauth.reopenBrowser(selector: selector);
   }
 
   String _oauthFailureMessage(ProviderId provider, OAuthFailureKind failure) {
@@ -552,7 +574,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         provider == ProviderId.codex
             ? 'Codex 登录端口 1455 和 1457 都被占用'
             : 'Claude Code 登录端口被占用',
-      OAuthFailureKind.browserUnavailable => '无法打开系统浏览器',
+      OAuthFailureKind.browserUnavailable => '没有可用的浏览器，或浏览器打开失败',
       OAuthFailureKind.tokenExchange => '$name 登录交换凭据失败',
       OAuthFailureKind.invalidResponse => '$name 返回了无法识别的登录结果',
       OAuthFailureKind.secureStorage => '无法安全保存 $name 登录凭据',

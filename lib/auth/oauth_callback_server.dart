@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'loopback_bindings.dart';
 import 'oauth_config.dart';
+import 'oauth_diagnostics.dart';
 import 'oauth_return_page.dart';
 
 enum OAuthCallbackKind { accepted, providerCancelled, invalid, serverError }
@@ -62,12 +63,17 @@ class OAuthCallbackServer {
     for (final port in config.ports) {
       try {
         final servers = await bindLoopbackServers(port);
+        OAuthDiagnostics.instance.record('server.bound', {
+          'port': servers.first.port,
+          'listeners': servers.length,
+        });
         return OAuthCallbackServer._(
           servers: servers,
           config: config,
           expectedState: expectedState,
         );
       } on SocketException {
+        OAuthDiagnostics.instance.record('server.portBusy', {'port': port});
         continue;
       }
     }
@@ -76,6 +82,11 @@ class OAuthCallbackServer {
 
   Future<void> _handle(HttpRequest request) async {
     try {
+      // 只记录判定结果，绝不记录 query 内容：这份日志是给用户整份复制走的。
+      OAuthDiagnostics.instance.record('callback.request', {
+        'method.get': request.method == 'GET',
+        'path.match': request.uri.path == config.callbackPath,
+      });
       if (request.method != 'GET' || request.uri.path != config.callbackPath) {
         await _respond(request, false);
         _emit(const OAuthCallbackEvent.invalid());
@@ -100,6 +111,7 @@ class OAuthCallbackServer {
         return;
       }
       await _respond(request, true);
+      OAuthDiagnostics.instance.record('callback.accepted');
       _emit(OAuthCallbackEvent.accepted(code));
     } on Object {
       try {
@@ -112,9 +124,9 @@ class OAuthCallbackServer {
   }
 
   Future<void> _respond(HttpRequest request, bool success) async {
-    final title = success ? '登录已接收' : '登录未完成';
+    final title = success ? '授权已收到' : '登录未完成';
     final message = success
-        ? '可以关闭此页面并返回 CC Trace。'
+        ? '可以关闭此页面，返回 CC Trace 就能看到额度。'
         : '请返回 CC Trace 后重试。';
     request.response
       ..statusCode = success ? HttpStatus.ok : HttpStatus.badRequest
@@ -134,6 +146,11 @@ class OAuthCallbackServer {
   }
 
   void _emit(OAuthCallbackEvent event) {
+    if (event.kind != OAuthCallbackKind.accepted) {
+      OAuthDiagnostics.instance.record('callback.rejected', {
+        'kind': event.kind.name,
+      });
+    }
     if (!_events.isClosed) {
       _events.add(event);
     }

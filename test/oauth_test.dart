@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:cc_trace_mobile/auth/oauth_callback_server.dart';
 import 'package:cc_trace_mobile/auth/oauth_config.dart';
 import 'package:cc_trace_mobile/auth/oauth_coordinator.dart';
+import 'package:cc_trace_mobile/auth/oauth_diagnostics.dart';
+import 'package:cc_trace_mobile/auth/oauth_keep_alive.dart';
 import 'package:cc_trace_mobile/auth/oauth_material.dart';
 import 'package:cc_trace_mobile/auth/token_bundle.dart';
 import 'package:cc_trace_mobile/domain/quota_models.dart';
@@ -21,7 +23,8 @@ void main() {
     expect(codex.ports, [1455, 1457]);
     expect(codex.redirectUri(1455).toString(), contains('localhost:1455'));
     expect(codex.callbackPath, '/auth/callback');
-    expect(claude.ports, [41999]);
+    expect(claude.ports.first, 41999);
+    expect(claude.ports.length, greaterThan(1));
     expect(claude.callbackPath, '/callback');
     expect(claude.extraAuthorizeParameters['code'], 'true');
 
@@ -158,6 +161,7 @@ void main() {
       final browser = _DelayedLoopbackBrowser();
       final coordinator = OAuthCoordinator(
         browserFactory: () => browser,
+        keepAlive: const NoopSignInKeepAlive(),
         configs: const {ProviderId.codex: config},
         client: MockClient((request) async {
           expect(request.url, Uri.parse(config.tokenEndpoint));
@@ -180,6 +184,204 @@ void main() {
       coordinator.dispose();
     },
   );
+
+  test('the chosen browser is what reaches the platform', () async {
+    const config = _claudeTestConfig;
+    final browser = _ScriptedBrowser(
+      choices: const [
+        BrowserChoice(
+          packageName: 'com.example.default',
+          label: 'Default',
+          supportsCustomTabs: false,
+          isDefault: true,
+        ),
+        BrowserChoice(
+          packageName: 'com.example.tabs',
+          label: 'Tabs',
+          supportsCustomTabs: true,
+          isDefault: false,
+        ),
+      ],
+    );
+    final diagnostics = OAuthDiagnostics();
+    final coordinator = _coordinator(browser, diagnostics: diagnostics);
+    final phases = <OAuthPhase>[];
+    final subscription = coordinator.phases.listen(phases.add);
+
+    final token = await coordinator.signIn(
+      ProviderId.claude,
+      // 用户挑的不是系统默认浏览器：选择必须原样传到平台。
+      selector: (choices) async => choices.last,
+    );
+
+    expect(token.provider, ProviderId.claude);
+    expect(browser.openedPackages, ['com.example.tabs']);
+    expect(
+      phases,
+      containsAllInOrder([
+        OAuthPhase.choosingBrowser,
+        OAuthPhase.waitingInBrowser,
+        OAuthPhase.exchanging,
+      ]),
+    );
+    expect(diagnostics.export(), contains('com.example.tabs'));
+    expect(diagnostics.export(), isNot(contains('test-code')));
+    expect(diagnostics.export(), isNot(contains(config.clientId)));
+
+    await subscription.cancel();
+    coordinator.dispose();
+  });
+
+  test('declining the browser picker cancels the sign-in', () async {
+    final browser = _ScriptedBrowser(
+      choices: const [
+        BrowserChoice(
+          packageName: 'com.example.default',
+          label: 'Default',
+          supportsCustomTabs: true,
+          isDefault: true,
+        ),
+      ],
+      deliverCallback: false,
+    );
+    final coordinator = _coordinator(browser);
+
+    await expectLater(
+      coordinator.signIn(ProviderId.claude, selector: (_) async => null),
+      throwsA(
+        isA<OAuthFailure>().having(
+          (failure) => failure.kind,
+          'kind',
+          OAuthFailureKind.cancelled,
+        ),
+      ),
+    );
+    expect(browser.openedPackages, isEmpty);
+    coordinator.dispose();
+  });
+
+  test(
+    'returning to the app stalls the phase but never cancels on its own',
+    () async {
+      final browser = _ScriptedBrowser(
+        choices: const [],
+        deliverCallback: false,
+        emitReturned: true,
+      );
+      final coordinator = _coordinator(browser);
+      final phases = <OAuthPhase>[];
+      final subscription = coordinator.phases.listen(phases.add);
+
+      final flow = coordinator.signIn(ProviderId.claude);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(phases, contains(OAuthPhase.returnedWithoutResult));
+
+      // 回到前台不构成取消：流程仍在等，只有用户明确取消才结束。
+      coordinator.cancel();
+      await expectLater(
+        flow,
+        throwsA(
+          isA<OAuthFailure>().having(
+            (failure) => failure.kind,
+            'kind',
+            OAuthFailureKind.cancelled,
+          ),
+        ),
+      );
+
+      await subscription.cancel();
+      coordinator.dispose();
+    },
+  );
+}
+
+const _claudeTestConfig = OAuthConfig(
+  provider: ProviderId.claude,
+  authorizeEndpoint: 'https://example.test/authorize',
+  tokenEndpoint: 'https://example.test/token',
+  usageEndpoint: 'https://example.test/usage',
+  clientId: 'client-id',
+  scopes: 'user:profile',
+  callbackPath: '/callback',
+  ports: [0],
+  extraAuthorizeParameters: {},
+);
+
+OAuthCoordinator _coordinator(
+  BrowserLauncher browser, {
+  OAuthDiagnostics? diagnostics,
+}) {
+  return OAuthCoordinator(
+    browserFactory: () => browser,
+    keepAlive: const NoopSignInKeepAlive(),
+    diagnostics: diagnostics ?? OAuthDiagnostics(),
+    configs: const {ProviderId.claude: _claudeTestConfig},
+    client: MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'access_token': 'header.e30.signature',
+          'refresh_token': 'refresh-token',
+          'expires_in': 3600,
+        }),
+        HttpStatus.ok,
+        headers: const {'content-type': 'application/json'},
+      );
+    }),
+  );
+}
+
+class _ScriptedBrowser implements BrowserLauncher {
+  _ScriptedBrowser({
+    required this.choices,
+    this.deliverCallback = true,
+    this.emitReturned = false,
+  });
+
+  final List<BrowserChoice> choices;
+  final bool deliverCallback;
+  final bool emitReturned;
+  final List<String?> openedPackages = [];
+  final StreamController<OAuthBrowserEvent> _events =
+      StreamController<OAuthBrowserEvent>.broadcast(sync: true);
+
+  @override
+  Stream<OAuthBrowserEvent> get events => _events.stream;
+
+  @override
+  Future<List<BrowserChoice>> listBrowsers() async => choices;
+
+  @override
+  Future<void> open(Uri authorizeUri, {String? packageName}) async {
+    openedPackages.add(packageName);
+    if (emitReturned) {
+      _events.add(const OAuthBrowserEvent(OAuthBrowserEventType.returned));
+    }
+    if (!deliverCallback) {
+      return;
+    }
+    final redirectUri = Uri.parse(
+      authorizeUri.queryParameters['redirect_uri']!,
+    );
+    await _get(
+      redirectUri.replace(
+        host: InternetAddress.loopbackIPv4.address,
+        queryParameters: {
+          'code': 'test-code',
+          'state': authorizeUri.queryParameters['state']!,
+        },
+      ),
+    );
+  }
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> release() async {}
+
+  @override
+  Future<void> dispose() => _events.close();
 }
 
 class _DelayedLoopbackBrowser implements BrowserLauncher {
@@ -190,7 +392,10 @@ class _DelayedLoopbackBrowser implements BrowserLauncher {
   Stream<OAuthBrowserEvent> get events => _events.stream;
 
   @override
-  Future<void> open(Uri authorizeUri) async {
+  Future<List<BrowserChoice>> listBrowsers() async => const [];
+
+  @override
+  Future<void> open(Uri authorizeUri, {String? packageName}) async {
     _events.add(const OAuthBrowserEvent(OAuthBrowserEventType.returned));
     await Future<void>.delayed(const Duration(milliseconds: 1600));
 

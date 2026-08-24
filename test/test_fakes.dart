@@ -9,10 +9,19 @@ class FakeOAuthGateway implements OAuthGateway {
   FakeOAuthGateway({this.onSignIn});
 
   final Future<TokenBundle> Function(ProviderId provider)? onSignIn;
+  final StreamController<OAuthPhase> _phases =
+      StreamController<OAuthPhase>.broadcast();
   bool disposed = false;
+  bool cancelled = false;
+  int reopenCount = 0;
+
+  void emitPhase(OAuthPhase phase) => _phases.add(phase);
 
   @override
-  Future<TokenBundle> signIn(ProviderId provider) {
+  Stream<OAuthPhase> get phases => _phases.stream;
+
+  @override
+  Future<TokenBundle> signIn(ProviderId provider, {BrowserSelector? selector}) {
     final callback = onSignIn;
     if (callback == null) {
       throw const OAuthFailure(OAuthFailureKind.cancelled);
@@ -21,8 +30,19 @@ class FakeOAuthGateway implements OAuthGateway {
   }
 
   @override
+  Future<void> reopenBrowser({BrowserSelector? selector}) async {
+    reopenCount += 1;
+  }
+
+  @override
+  void cancel() {
+    cancelled = true;
+  }
+
+  @override
   void dispose() {
     disposed = true;
+    unawaited(_phases.close());
   }
 }
 

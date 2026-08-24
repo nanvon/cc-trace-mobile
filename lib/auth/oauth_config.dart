@@ -75,7 +75,9 @@ const providerConfigs = <ProviderId, OAuthConfig>{
         'org:create_api_key user:profile user:inference '
         'user:sessions:claude_code user:mcp_servers user:file_upload',
     callbackPath: '/callback',
-    ports: [41999],
+    // Q1 实测 Claude 接受任意 localhost 端口（见 docs/OAuth可行性验证.md）。
+    // 41999 与桌面端 / Q1 保持一致，被占用时顺延，不再直接判登录失败。
+    ports: [41999, 41998, 41997],
     extraAuthorizeParameters: {'code': 'true'},
   ),
 };

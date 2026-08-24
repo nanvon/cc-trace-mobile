@@ -6,6 +6,7 @@ import 'package:flutter/physics.dart';
 import '../app/app_controller.dart';
 import '../domain/quota_models.dart';
 import 'app_theme.dart';
+import 'sign_in_flow.dart';
 import 'settings_screen.dart';
 
 class UsageScreen extends StatelessWidget {
@@ -228,7 +229,8 @@ class _Onboarding extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: controller.authorizing == null
-                        ? () => controller.signIn(ProviderId.codex)
+                        ? () =>
+                              startSignIn(context, controller, ProviderId.codex)
                         : null,
                     child: _LoginLabel(
                       busy: controller.authorizing == ProviderId.codex,
@@ -241,7 +243,11 @@ class _Onboarding extends StatelessWidget {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: controller.authorizing == null
-                        ? () => controller.signIn(ProviderId.claude)
+                        ? () => startSignIn(
+                            context,
+                            controller,
+                            ProviderId.claude,
+                          )
                         : null,
                     child: _LoginLabel(
                       busy: controller.authorizing == ProviderId.claude,
@@ -517,7 +523,7 @@ class _ProviderCardState extends State<_ProviderCard>
                   alert: alert,
                   onPressed: () {
                     if (alert.action == _AlertAction.login) {
-                      controller.signIn(state.provider);
+                      startSignIn(context, controller, state.provider);
                     } else {
                       controller.refreshProvider(state.provider);
                     }

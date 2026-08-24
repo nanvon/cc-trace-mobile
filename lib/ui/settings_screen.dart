@@ -6,6 +6,8 @@ import '../domain/app_settings.dart';
 import '../domain/quota_models.dart';
 import '../q3/q3_screen.dart';
 import 'app_theme.dart';
+import 'oauth_diagnostics_screen.dart';
+import 'sign_in_flow.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({required this.controller, super.key});
@@ -81,6 +83,38 @@ class SettingsScreen extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+              ),
+              const SizedBox(height: 24),
+              const _SectionLabel('登录'),
+              _SettingsCard(
+                children: [
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    minTileHeight: 58,
+                    title: const Text(
+                      '登录诊断',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      '登录失败时把记录复制给开发者',
+                      style: TextStyle(
+                        color: context.palette.default500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      color: context.palette.default400,
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const OAuthDiagnosticsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
               if (kDebugMode) ...[
                 const SizedBox(height: 24),
@@ -193,7 +227,7 @@ class _AccountRow extends StatelessWidget {
               color: context.palette.content1,
               onSelected: (value) async {
                 if (value == 'login') {
-                  await controller.signIn(provider);
+                  await startSignIn(context, controller, provider);
                 } else if (value == 'logout' &&
                     context.mounted &&
                     await _confirmLogout(context, provider)) {
@@ -208,7 +242,7 @@ class _AccountRow extends StatelessWidget {
             )
           else
             TextButton(
-              onPressed: () => controller.signIn(provider),
+              onPressed: () => startSignIn(context, controller, provider),
               child: const Text('登录'),
             ),
         ],

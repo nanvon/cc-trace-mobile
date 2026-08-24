@@ -14,6 +14,9 @@ void main() {
 
       expect(page, contains('cctrace://oauth-finished'));
       expect(page, contains('返回 CC Trace'));
+      // 自动跳转必被浏览器拦截，还会引出没有本应用的「打开方式」选择器：
+      // 页面只保留需要用户点击的按钮。
+      expect(page, isNot(contains('http-equiv="refresh"')));
       expect(page, isNot(contains('code=')));
       expect(page, isNot(contains('state=')));
       expect(page, isNot(contains('token')));

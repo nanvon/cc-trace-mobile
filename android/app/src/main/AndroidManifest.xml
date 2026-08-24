@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 登录期间把进程钉在前台，保证浏览器能连上本机回调 server。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE"/>
 
     <application
         android:label="CC Trace"
@@ -37,6 +40,10 @@
                     android:host="oauth-finished"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".OAuthKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="shortService"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -51,6 +58,14 @@
     <queries>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService"/>
+        </intent>
+        <!-- 枚举设备上的浏览器供用户选择。缺了这条，Android 11+ 的包可见性会让
+             默认浏览器识别失效，系统只能从「声明了 CustomTabsService 的包」里
+             随便挑一个，登录页因此可能落在用户没登录过的冷门浏览器上。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <category android:name="android.intent.category.BROWSABLE"/>
+            <data android:scheme="https"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
