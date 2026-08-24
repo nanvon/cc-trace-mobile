@@ -2,13 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-enum OAuthBrowserEventType { cancelled, returned, failed }
+enum OAuthBrowserEventType { cancelled, returned, failed, callbackIntent }
 
 class OAuthBrowserEvent {
-  const OAuthBrowserEvent(this.type, {this.category});
+  const OAuthBrowserEvent(this.type, {this.category, this.callbackUri});
 
   final OAuthBrowserEventType type;
   final String? category;
+
+  /// 仅 [OAuthBrowserEventType.callbackIntent] 携带：浏览器没有自己加载
+  /// loopback 地址，而是交给系统 Resolver，用户选回本应用带进来的回调 URI。
+  final Uri? callbackUri;
 }
 
 /// 设备上可用于打开授权页的浏览器。
@@ -124,6 +128,19 @@ class OAuthBrowserBridge implements BrowserLauncher {
         break;
       case 'browserReturned':
         _events.add(const OAuthBrowserEvent(OAuthBrowserEventType.returned));
+        break;
+      case 'oauthCallback':
+        final callbackArguments = call.arguments;
+        final raw = callbackArguments is Map ? callbackArguments['uri'] : null;
+        final uri = raw is String ? Uri.tryParse(raw) : null;
+        if (uri != null) {
+          _events.add(
+            OAuthBrowserEvent(
+              OAuthBrowserEventType.callbackIntent,
+              callbackUri: uri,
+            ),
+          );
+        }
         break;
       case 'browserFailed':
         final arguments = call.arguments;

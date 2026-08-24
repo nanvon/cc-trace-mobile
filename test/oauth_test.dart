@@ -294,6 +294,39 @@ void main() {
       coordinator.dispose();
     },
   );
+
+  test(
+    'a callback intent completes sign-in when the loopback server never sees it',
+    () async {
+      final browser = _ResolverInterceptedBrowser();
+      final coordinator = _coordinator(browser);
+
+      final token = await coordinator.signIn(ProviderId.claude);
+
+      expect(token.provider, ProviderId.claude);
+      coordinator.dispose();
+    },
+  );
+
+  test('a callback intent carrying a foreign state is rejected', () async {
+    final browser = _ResolverInterceptedBrowser(stateOverride: 'not-our-state');
+    final coordinator = _coordinator(
+      browser,
+      timeout: const Duration(milliseconds: 300),
+    );
+
+    await expectLater(
+      coordinator.signIn(ProviderId.claude),
+      throwsA(
+        isA<OAuthFailure>().having(
+          (failure) => failure.kind,
+          'kind',
+          OAuthFailureKind.timeout,
+        ),
+      ),
+    );
+    coordinator.dispose();
+  });
 }
 
 const _claudeTestConfig = OAuthConfig(
@@ -311,11 +344,13 @@ const _claudeTestConfig = OAuthConfig(
 OAuthCoordinator _coordinator(
   BrowserLauncher browser, {
   OAuthDiagnostics? diagnostics,
+  Duration? timeout,
 }) {
   return OAuthCoordinator(
     browserFactory: () => browser,
     keepAlive: const NoopSignInKeepAlive(),
     diagnostics: diagnostics ?? OAuthDiagnostics(),
+    timeout: timeout ?? const Duration(minutes: 3),
     configs: const {ProviderId.claude: _claudeTestConfig},
     client: MockClient((request) async {
       return http.Response(
@@ -410,6 +445,52 @@ class _DelayedLoopbackBrowser implements BrowserLauncher {
       },
     );
     await _get(callbackUri);
+  }
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> release() async {}
+
+  @override
+  Future<void> dispose() => _events.close();
+}
+
+/// 模拟 Firefox：不自己加载 loopback 地址，而是把它交给系统 Resolver，
+/// 由用户选回本应用。此时 HTTP server 一个请求都收不到。
+class _ResolverInterceptedBrowser implements BrowserLauncher {
+  _ResolverInterceptedBrowser({this.stateOverride});
+
+  /// 非空时冒充另一轮授权的 state，用来验证伪造的 intent 进不来。
+  final String? stateOverride;
+
+  final StreamController<OAuthBrowserEvent> _events =
+      StreamController<OAuthBrowserEvent>.broadcast(sync: true);
+
+  @override
+  Stream<OAuthBrowserEvent> get events => _events.stream;
+
+  @override
+  Future<List<BrowserChoice>> listBrowsers() async => const [];
+
+  @override
+  Future<void> open(Uri authorizeUri, {String? packageName}) async {
+    final redirectUri = Uri.parse(
+      authorizeUri.queryParameters['redirect_uri']!,
+    );
+    _events.add(
+      OAuthBrowserEvent(
+        OAuthBrowserEventType.callbackIntent,
+        callbackUri: redirectUri.replace(
+          queryParameters: {
+            'code': 'test-code',
+            'state':
+                stateOverride ?? authorizeUri.queryParameters['state']!,
+          },
+        ),
+      ),
+    );
   }
 
   @override

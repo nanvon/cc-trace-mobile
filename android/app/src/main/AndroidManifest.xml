@@ -39,6 +39,31 @@
                     android:scheme="cctrace"
                     android:host="oauth-finished"/>
             </intent-filter>
+            <!--
+                loopback 回调的兜底通路。Firefox 一类浏览器不会自己加载
+                http://localhost:…，而是拦下来问「用哪个应用打开」；不声明这两个
+                filter，选择器里就只有钉钉和浏览器，本应用反而进不去，授权码要么
+                丢失、要么落到无关应用手里。
+
+                localhost 无法做 autoVerify（放不了 assetlinks.json），所以选择器
+                消不掉，但至少 CC Trace 在里面。端口与路径按 Provider 分开写，
+                避免多个 data 元素被 Android 交叉组合成额外的合法地址。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="http" android:host="localhost" android:port="1455" android:path="/auth/callback"/>
+                <data android:scheme="http" android:host="localhost" android:port="1457" android:path="/auth/callback"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="http" android:host="localhost" android:port="41999" android:path="/callback"/>
+                <data android:scheme="http" android:host="localhost" android:port="41998" android:path="/callback"/>
+                <data android:scheme="http" android:host="localhost" android:port="41997" android:path="/callback"/>
+            </intent-filter>
         </activity>
         <service
             android:name=".OAuthKeepAliveService"

@@ -319,6 +319,11 @@ class Q3Controller extends ChangeNotifier {
         // diagnostic only; callback, explicit cancellation, or timeout
         // decides this attempt.
         break;
+      case OAuthBrowserEventType.callbackIntent:
+        // Debug 验证页有独立的 loopback server，不接 intent 回调通路。
+        // 这条通路只在正式登录流程（oauth_coordinator）里生效，因此这里
+        // 保持原判定不变：回调、显式取消或超时决定本轮结果。
+        break;
       case OAuthBrowserEventType.failed:
         _browserOpened = false;
         unawaited(

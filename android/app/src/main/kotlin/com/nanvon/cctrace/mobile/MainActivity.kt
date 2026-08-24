@@ -24,6 +24,19 @@ class MainActivity : FlutterActivity() {
 
         /** 只用来枚举「能打开任意 https 链接」的应用，即浏览器。 */
         private val browserProbeUri = Uri.parse("https://example.com")
+
+        /**
+         * 允许从 intent 收下的 loopback 回调地址，必须与 `oauth_config.dart`
+         * 里各 Provider 的端口和 callbackPath 逐条对齐。多一条就是多一个能往
+         * 应用里灌回调的入口，因此这里是白名单而不是前缀匹配。
+         */
+        private val loopbackCallbackPaths = mapOf(
+            1455 to "/auth/callback",
+            1457 to "/auth/callback",
+            41999 to "/callback",
+            41998 to "/callback",
+            41997 to "/callback",
+        )
     }
 
     private var channel: MethodChannel? = null
@@ -34,6 +47,7 @@ class MainActivity : FlutterActivity() {
     private var customTabsPackage: String? = null
     private var customTabsServiceBound = false
     private var pendingBrowserOpen: PendingBrowserOpen? = null
+    private var pendingCallbackUri: String? = null
 
     private val customTabsServiceConnection = object : CustomTabsServiceConnection() {
         override fun onCustomTabsServiceConnected(
@@ -94,6 +108,10 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+            pendingCallbackUri?.let { pending ->
+                pendingCallbackUri = null
+                methodChannel.invokeMethod("oauthCallback", mapOf("uri" to pending))
+            }
         }
         keepAliveChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -110,6 +128,8 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        // 冷启动就是被回调 intent 拉起来的：引擎刚就绪，先把它交出去。
+        handleOAuthIntent(intent)
     }
 
     /**
@@ -145,7 +165,13 @@ class MainActivity : FlutterActivity() {
             .toSet()
 
         val browsers = LinkedHashMap<String, Boolean>()
-        for (info in packageManager.queryIntentActivities(browserProbeIntent(), 0)) {
+        // 必须用 MATCH_ALL：flags = 0 时系统按「偏好 activity」收敛，带具体 https
+        // data 的查询只会回默认浏览器那一个，用户就没得选了。
+        val activities = packageManager.queryIntentActivities(
+            browserProbeIntent(),
+            PackageManager.MATCH_ALL,
+        )
+        for (info in activities) {
             val browserPackage = info.activityInfo?.packageName ?: continue
             if (browserPackage == packageName) {
                 continue
@@ -375,9 +401,45 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == Intent.ACTION_VIEW && intent.data == oauthReturnUri) {
-            notifyBrowserReturned()
+        handleOAuthIntent(intent)
+    }
+
+    private fun handleOAuthIntent(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW) {
+            return
         }
+        val data = intent.data ?: return
+        if (data == oauthReturnUri) {
+            notifyBrowserReturned()
+            return
+        }
+        if (isLoopbackCallback(data)) {
+            deliverCallbackUri(data)
+        }
+    }
+
+    private fun isLoopbackCallback(uri: Uri): Boolean =
+        uri.scheme == "http" &&
+            uri.host == "localhost" &&
+            loopbackCallbackPaths[uri.port] == uri.path
+
+    /**
+     * Firefox 一类浏览器会拦下 loopback 导航去问「用哪个应用打开」，此时本机
+     * server 收不到任何请求，授权码只能靠这条 intent 通路回来。
+     *
+     * URI 原样转交 Dart 侧统一校验 state 与 code，这里不解析、不记录、不落盘。
+     */
+    private fun deliverCallbackUri(uri: Uri) {
+        val value = uri.toString()
+        // 回调已经到手，别再让 onResume 把它误报成「用户空手切回来了」。
+        browserLaunchPending = false
+        browserPauseObserved = false
+        val methodChannel = channel
+        if (methodChannel == null) {
+            pendingCallbackUri = value
+            return
+        }
+        methodChannel.invokeMethod("oauthCallback", mapOf("uri" to value))
     }
 
     override fun onPause() {

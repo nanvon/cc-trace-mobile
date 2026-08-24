@@ -97,6 +97,7 @@ class OAuthCoordinator implements OAuthGateway {
   Completer<String>? _pending;
   BrowserLauncher? _activeBrowser;
   Uri? _activeAuthorizeUri;
+  Timer? _timeoutTimer;
 
   @override
   Stream<OAuthPhase> get phases => _phases.stream;
@@ -112,7 +113,6 @@ class OAuthCoordinator implements OAuthGateway {
     BrowserLauncher? browser;
     StreamSubscription<OAuthCallbackEvent>? callbackSubscription;
     StreamSubscription<OAuthBrowserEvent>? browserSubscription;
-    Timer? timeoutTimer;
     final result = Completer<String>();
     _pending = result;
     _diagnostics.startSession(provider.name);
@@ -159,6 +159,14 @@ class OAuthCoordinator implements OAuthGateway {
             // 侧发起、本进程刚被唤醒时）。只把状态告诉界面，由用户决定去留。
             _diagnostics.record('platform.browserReturned');
             _emitPhase(OAuthPhase.returnedWithoutResult);
+          case OAuthBrowserEventType.callbackIntent:
+            // 浏览器没自己加载 loopback，而是把它交给了系统 Resolver。
+            // 校验口径与 HTTP 回调完全一致，由 server 统一判定。
+            final callbackUri = event.callbackUri;
+            if (callbackUri != null) {
+              _diagnostics.record('platform.callbackIntent');
+              server?.acceptExternalCallback(callbackUri);
+            }
           case OAuthBrowserEventType.failed:
             _diagnostics.record('platform.browserFailed', {
               'category': event.category ?? 'unknown',
@@ -168,11 +176,6 @@ class OAuthCoordinator implements OAuthGateway {
             );
         }
       });
-      timeoutTimer = Timer(timeout, () {
-        if (!result.isCompleted) {
-          result.completeError(const OAuthFailure(OAuthFailureKind.timeout));
-        }
-      });
 
       final authorizeUri = config.authorizeUri(
         port: server.port,
@@ -180,9 +183,6 @@ class OAuthCoordinator implements OAuthGateway {
         challenge: material.challenge,
       );
       _activeAuthorizeUri = authorizeUri;
-
-      final held = await _keepAlive.start();
-      _diagnostics.record('keepAlive.start', {'held': held});
 
       await _openBrowser(browser, authorizeUri, selector);
       final code = await result.future;
@@ -206,7 +206,8 @@ class OAuthCoordinator implements OAuthGateway {
       _diagnostics.record('signIn.failure', {'kind': 'browserUnavailable'});
       throw const OAuthFailure(OAuthFailureKind.browserUnavailable);
     } finally {
-      timeoutTimer?.cancel();
+      _timeoutTimer?.cancel();
+      _timeoutTimer = null;
       _pending = null;
       _activeBrowser = null;
       _activeAuthorizeUri = null;
@@ -278,8 +279,27 @@ class OAuthCoordinator implements OAuthGateway {
       });
     }
     _emitPhase(OAuthPhase.waitingInBrowser);
+    // 保活和超时都从「浏览器真的打开」起算：用户在选择面板上停留的时间既不该
+    // 吃掉 shortService 的 3 分钟额度，也不该让授权页刚打开就被判超时。
+    final held = await _keepAlive.start();
+    _diagnostics.record('keepAlive.start', {'held': held});
     await browser.open(authorizeUri, packageName: chosen?.packageName);
     _diagnostics.record('browser.opened');
+    _startTimeout();
+  }
+
+  /// 重开浏览器同样重置窗口：换一个浏览器重试等于重新开始等待授权。
+  void _startTimeout() {
+    final pending = _pending;
+    if (pending == null) {
+      return;
+    }
+    _timeoutTimer?.cancel();
+    _timeoutTimer = Timer(timeout, () {
+      if (!pending.isCompleted) {
+        pending.completeError(const OAuthFailure(OAuthFailureKind.timeout));
+      }
+    });
   }
 
   void _emitPhase(OAuthPhase phase) {

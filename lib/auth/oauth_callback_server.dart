@@ -87,32 +87,17 @@ class OAuthCallbackServer {
         'method.get': request.method == 'GET',
         'path.match': request.uri.path == config.callbackPath,
       });
-      if (request.method != 'GET' || request.uri.path != config.callbackPath) {
+      if (request.method != 'GET') {
         await _respond(request, false);
         _emit(const OAuthCallbackEvent.invalid());
         return;
       }
-      final parameters = request.uri.queryParameters;
-      final state = parameters['state'];
-      if (state == null || state != expectedState) {
-        await _respond(request, false);
-        _emit(const OAuthCallbackEvent.invalid());
-        return;
+      final event = evaluateCallbackUri(request.uri);
+      await _respond(request, event.kind == OAuthCallbackKind.accepted);
+      if (event.kind == OAuthCallbackKind.accepted) {
+        OAuthDiagnostics.instance.record('callback.accepted');
       }
-      if (parameters.containsKey('error')) {
-        await _respond(request, false);
-        _emit(const OAuthCallbackEvent.providerCancelled());
-        return;
-      }
-      final code = parameters['code'];
-      if (code == null || code.isEmpty) {
-        await _respond(request, false);
-        _emit(const OAuthCallbackEvent.invalid());
-        return;
-      }
-      await _respond(request, true);
-      OAuthDiagnostics.instance.record('callback.accepted');
-      _emit(OAuthCallbackEvent.accepted(code));
+      _emit(event);
     } on Object {
       try {
         await _respond(request, false);
@@ -121,6 +106,43 @@ class OAuthCallbackServer {
       }
       _emit(const OAuthCallbackEvent.serverError());
     }
+  }
+
+  /// 回调 URI 的唯一判定口径。HTTP 回调和 intent 回调共用，两条路的严格程度
+  /// 必须完全一致，否则 intent 这条就成了绕过 state 校验的后门。
+  OAuthCallbackEvent evaluateCallbackUri(Uri uri) {
+    if (uri.path != config.callbackPath) {
+      return const OAuthCallbackEvent.invalid();
+    }
+    final parameters = uri.queryParameters;
+    final state = parameters['state'];
+    if (state == null || state != expectedState) {
+      return const OAuthCallbackEvent.invalid();
+    }
+    if (parameters.containsKey('error')) {
+      return const OAuthCallbackEvent.providerCancelled();
+    }
+    final code = parameters['code'];
+    if (code == null || code.isEmpty) {
+      return const OAuthCallbackEvent.invalid();
+    }
+    return OAuthCallbackEvent.accepted(code);
+  }
+
+  /// 浏览器把 loopback 重定向交给系统 Resolver、用户再选回 CC Trace 时的入口。
+  ///
+  /// Firefox 一类浏览器会拦截 http 导航去问「用哪个应用打开」，此时 loopback
+  /// server 收不到任何请求，授权码只能从这条 intent 通路回来。
+  void acceptExternalCallback(Uri uri) {
+    if (_closed) {
+      return;
+    }
+    final event = evaluateCallbackUri(uri);
+    // 只记判定结果，绝不记 query：这份日志是给用户整份复制走的。
+    OAuthDiagnostics.instance.record('callback.intent', {
+      'accepted': event.kind == OAuthCallbackKind.accepted,
+    });
+    _emit(event);
   }
 
   Future<void> _respond(HttpRequest request, bool success) async {
