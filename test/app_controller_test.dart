@@ -331,6 +331,48 @@ void main() {
     controller.dispose();
   });
 
+  test('sign-in releases the login sheet before the usage refresh', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    final local = MemoryLocalStore()..installed = true;
+    final fetchStarted = Completer<void>();
+    final fetch = Completer<ProviderFetchResult>();
+    late final AppController controller;
+    ProviderId? authorizingWhenFetchStarted;
+
+    final gateway = FakeProviderGateway((provider) {
+      // 用量请求已经发出，登录本身早已结束：此刻面板不能还开着。
+      authorizingWhenFetchStarted = controller.authorizing;
+      fetchStarted.complete();
+      return fetch.future;
+    });
+    controller = AppController(
+      credentials: credentials,
+      localStore: local,
+      oauth: FakeOAuthGateway(
+        onSignIn: (_) async => fakeToken(ProviderId.codex, now: now),
+      ),
+      providerApi: gateway,
+      now: () => now,
+    );
+
+    final flow = controller.signIn(ProviderId.codex);
+    await fetchStarted.future;
+
+    expect(authorizingWhenFetchStarted, isNull);
+    expect(controller.authorizing, isNull);
+    expect(controller.authPhase, isNull);
+
+    fetch.complete(fakeSuccess(ProviderId.codex, now: now, remaining: 42));
+    await flow;
+
+    expect(
+      controller.provider(ProviderId.codex).snapshot?.primary.remainingPercent,
+      42,
+    );
+    controller.dispose();
+  });
+
   test(
     'auto refresh stays silent while a provider is held by backoff',
     () async {

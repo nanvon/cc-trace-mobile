@@ -531,6 +531,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       _credentialRefreshBlocked.remove(provider);
       _rateFailures.remove(provider);
       _transientFailures.remove(provider);
+      // 登录到此为止已经成功，登录面板必须立刻放行：再往后是拉用量，属于登录
+      // 之后的事，由主屏自己的加载态表达。留在这里等，面板会一直转圈，而那时
+      // coordinator 早已终态，面板上的取消按钮已经是个死键。
+      _authorizing = null;
+      _authPhase = null;
       notifyListeners();
       await refreshProvider(provider);
     } on OAuthFailure catch (failure) {
