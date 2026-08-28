@@ -59,12 +59,17 @@ git push origin v0.1.0
 `scripts/check_release_version.sh` 会拒绝 tag 与 `versionName` 不一致的发布。例如
 `0.1.0+2001` 只接受 `v0.1.0`。
 
+每个版本还必须有一份手写的 `release-notes/v<versionName>.md`，它是 Release 正文的唯一
+来源，格式与撰写规则见 [release-notes/README.md](../release-notes/README.md)。Release
+工作流会校验该文件存在且非空，缺失就直接失败、不创建 Release；正文原样使用，Android／iOS
+产物说明由工作流自动追加到末尾，不用逐版手写。
+
 Release 工作流成功后会：
 
-1. 确认 tag、`versionName` 和 `versionCode` 格式正确。
+1. 确认 tag、`versionName` 和 `versionCode` 格式正确，且 `release-notes/<tag>.md` 存在且非空。
 2. 运行静态分析、自动化测试与 iOS 无签名 Release 编译。
 3. 使用正式 Android key 构建和验收 arm64 APK。
-4. 创建并公开 Release。
+4. 创建并公开 Release，正文取自 `release-notes/<tag>.md`。
 5. 上传 `CC-Trace-Mobile_<版本>_Android-arm64.apk` 和 `.sha256`。
 
 公开 Release 只证明构建、签名和上传门禁通过，不等于真实 Provider、OAuth 或双平台真机

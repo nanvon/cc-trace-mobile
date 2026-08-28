@@ -29,6 +29,16 @@ jobs:
         id: version
         run: bash scripts/check_release_version.sh "${GITHUB_REF_NAME}"
 
+      - name: Check release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_path="release-notes/${GITHUB_REF_NAME}.md"
+          if [[ ! -s "$notes_path" ]] || ! grep -q '[^[:space:]]' "$notes_path"; then
+            echo "缺少 ${notes_path}；请在创建发布 tag 前补充面向用户的更新说明。" >&2
+            exit 1
+          fi
+
   ios:
     name: Analyze, test and iOS compile
     needs: prepare
@@ -143,6 +153,23 @@ jobs:
       VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
       VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_path="release-notes/${GITHUB_REF_NAME}.md"
+          if [[ ! -s "$notes_path" ]]; then
+            echo "缺少 ${notes_path}" >&2
+            exit 1
+          fi
+          # Release 正文 = 手写的本版更新说明 + 每版重复的固定尾注
+          {
+            cat "$notes_path"
+            printf '\n---\n\nAndroid：正式签名 arm64 APK，versionCode %s。iOS：无签名 Release 编译已通过；受免费 Apple ID 签名边界限制，不提供可分发 IPA。\n' "${VERSION_CODE}"
+          } > "${RUNNER_TEMP}/release-notes.md"
+
       - uses: actions/download-artifact@v4
         with:
           name: android-release-assets
@@ -154,9 +181,8 @@ jobs:
             gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --verify-tag \
-              --generate-notes \
               --title "CC Trace Mobile ${GITHUB_REF_NAME}" \
-              --notes "Android：正式签名 arm64 APK，versionCode ${VERSION_CODE}。iOS：无签名 Release 编译已通过；受免费 Apple ID 签名边界限制，不提供可分发 IPA。"
+              --notes-file "${RUNNER_TEMP}/release-notes.md"
           fi
 
           gh release upload "${GITHUB_REF_NAME}" release-assets/* \
