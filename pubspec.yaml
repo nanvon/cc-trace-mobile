@@ -1,7 +1,7 @@
 name: cc_trace_mobile
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.1.10+2011
+version: 0.1.11+2012
 
 environment:
   sdk: ^3.12.2
