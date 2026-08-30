@@ -13,6 +13,9 @@ logs
 /build/
 /coverage/
 
+# Golden 测试失败时的差异调试图
+**/test/failures/
+
 # Flutter symbolication / obfuscation
 app.*.symbols
 app.*.map.json
