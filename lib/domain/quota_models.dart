@@ -230,6 +230,115 @@ class ResetCreditsSnapshot {
   }
 }
 
+/// Codex 的额外额度（credits），来自 `/wham/usage` 的 `credits` 对象。
+///
+/// **这是点数不是钱**：套餐限额用尽后靠它继续用。[balance] 保留 Provider 给的
+/// 十进制字符串原样（形如 `4763.2323960000`），不在解析期转成浮点——取整与
+/// 千分位属于展示决定，留给界面层做。
+class CodexCredits {
+  const CodexCredits({
+    required this.hasCredits,
+    required this.unlimited,
+    required this.overageLimitReached,
+    this.balance,
+  });
+
+  final bool hasCredits;
+  final bool unlimited;
+  final bool overageLimitReached;
+  final String? balance;
+
+  Map<String, Object?> toJson() {
+    return {
+      'hasCredits': hasCredits,
+      'unlimited': unlimited,
+      'overageLimitReached': overageLimitReached,
+      'balance': balance,
+    };
+  }
+
+  factory CodexCredits.fromJson(Map<String, Object?> json) {
+    return CodexCredits(
+      hasCredits: json['hasCredits'] as bool? ?? false,
+      unlimited: json['unlimited'] as bool? ?? false,
+      overageLimitReached: json['overageLimitReached'] as bool? ?? false,
+      balance: json['balance'] as String?,
+    );
+  }
+}
+
+/// Provider 用最小货币单位表达的金额：[amountMinor] 除以 10 的 [exponent] 次方
+/// 才是面值。不预先算成浮点，理由同 [CodexCredits.balance]。
+class MoneyAmount {
+  const MoneyAmount({
+    required this.amountMinor,
+    required this.currency,
+    required this.exponent,
+  });
+
+  final int amountMinor;
+  final String currency;
+  final int exponent;
+
+  Map<String, Object?> toJson() {
+    return {
+      'amountMinor': amountMinor,
+      'currency': currency,
+      'exponent': exponent,
+    };
+  }
+
+  factory MoneyAmount.fromJson(Map<String, Object?> json) {
+    return MoneyAmount(
+      amountMinor: (json['amountMinor']! as num).toInt(),
+      currency: json['currency']! as String,
+      exponent: (json['exponent']! as num).toInt(),
+    );
+  }
+}
+
+/// Claude 订阅额度用尽后按 API 价继续用的月度花费，来自 `/api/oauth/usage` 的 `spend`。
+///
+/// **这不是账户余额。** 同一对象里的 `balance` 与 `auto_reload` 在 OAuth 链路上
+/// 恒为 `null`（2026-08-30 实测，见 `docs/移动端额度展示要求.md` §4.3），账户余额
+/// 只在 claude.ai 网页可见；那走的是另一套鉴权，移动端拿不到也不去拿。
+class ClaudeSpend {
+  const ClaudeSpend({
+    required this.enabled,
+    this.used,
+    this.limit,
+    this.percent,
+  });
+
+  final bool enabled;
+  final MoneyAmount? used;
+  final MoneyAmount? limit;
+  final double? percent;
+
+  /// 只有金额齐备才值得占一行；缺任何一半都不展示，不补造数据。
+  bool get hasAmounts => used != null && limit != null;
+
+  Map<String, Object?> toJson() {
+    return {
+      'enabled': enabled,
+      'used': used?.toJson(),
+      'limit': limit?.toJson(),
+      'percent': percent,
+    };
+  }
+
+  factory ClaudeSpend.fromJson(Map<String, Object?> json) {
+    final used = json['used'] as Map<String, Object?>?;
+    final limit = json['limit'] as Map<String, Object?>?;
+    return ClaudeSpend(
+      enabled: json['enabled'] as bool? ?? false,
+      used: used == null ? null : MoneyAmount.fromJson(used),
+      limit: limit == null ? null : MoneyAmount.fromJson(limit),
+      percent: (json['percent'] as num?)?.toDouble(),
+    );
+  }
+}
+
 class ProviderViewState {
   const ProviderViewState({
     required this.provider,
@@ -240,6 +349,8 @@ class ProviderViewState {
     this.identity,
     this.snapshot,
     this.resetCredits,
+    this.credits,
+    this.spend,
     this.lastSuccessAt,
     this.lastAttemptAt,
     this.retryAfter,
@@ -264,6 +375,8 @@ class ProviderViewState {
   final ProviderIdentity? identity;
   final QuotaSnapshot? snapshot;
   final ResetCreditsSnapshot? resetCredits;
+  final CodexCredits? credits;
+  final ClaudeSpend? spend;
   final DateTime? lastSuccessAt;
   final DateTime? lastAttemptAt;
   final DateTime? retryAfter;
@@ -282,6 +395,10 @@ class ProviderViewState {
     bool clearSnapshot = false,
     ResetCreditsSnapshot? resetCredits,
     bool clearResetCredits = false,
+    CodexCredits? credits,
+    bool clearCredits = false,
+    ClaudeSpend? spend,
+    bool clearSpend = false,
     DateTime? lastSuccessAt,
     DateTime? lastAttemptAt,
     DateTime? retryAfter,
@@ -300,6 +417,8 @@ class ProviderViewState {
       resetCredits: clearResetCredits
           ? null
           : resetCredits ?? this.resetCredits,
+      credits: clearCredits ? null : credits ?? this.credits,
+      spend: clearSpend ? null : spend ?? this.spend,
       lastSuccessAt: lastSuccessAt ?? this.lastSuccessAt,
       lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
       retryAfter: clearRetryAfter ? null : retryAfter ?? this.retryAfter,
@@ -313,6 +432,8 @@ class ProviderViewState {
       'identity': identity?.toJson(),
       'snapshot': snapshot?.toJson(),
       'resetCredits': resetCredits?.toJson(),
+      'credits': credits?.toJson(),
+      'spend': spend?.toJson(),
       'lastSuccessAt': lastSuccessAt?.toUtc().toIso8601String(),
     };
   }
@@ -321,7 +442,9 @@ class ProviderViewState {
     final provider = ProviderIdDetails.fromJson(json['provider']! as String);
     final identityJson = json['identity'] as Map<String, Object?>?;
     final snapshotJson = json['snapshot'] as Map<String, Object?>?;
-    final creditsJson = json['resetCredits'] as Map<String, Object?>?;
+    final resetCreditsJson = json['resetCredits'] as Map<String, Object?>?;
+    final creditsJson = json['credits'] as Map<String, Object?>?;
+    final spendJson = json['spend'] as Map<String, Object?>?;
     return ProviderViewState(
       provider: provider,
       refresh: RefreshState.idle,
@@ -334,9 +457,11 @@ class ProviderViewState {
       snapshot: snapshotJson == null
           ? null
           : QuotaSnapshot.fromJson(snapshotJson),
-      resetCredits: creditsJson == null
+      resetCredits: resetCreditsJson == null
           ? null
-          : ResetCreditsSnapshot.fromJson(creditsJson),
+          : ResetCreditsSnapshot.fromJson(resetCreditsJson),
+      credits: creditsJson == null ? null : CodexCredits.fromJson(creditsJson),
+      spend: spendJson == null ? null : ClaudeSpend.fromJson(spendJson),
       lastSuccessAt: _date(json['lastSuccessAt']),
     );
   }

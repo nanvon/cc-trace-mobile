@@ -3,10 +3,21 @@ import 'dart:convert';
 import '../domain/quota_models.dart';
 
 class ParsedUsage {
-  const ParsedUsage({required this.snapshot, this.identity});
+  const ParsedUsage({
+    required this.snapshot,
+    this.identity,
+    this.credits,
+    this.spend,
+  });
 
   final QuotaSnapshot snapshot;
   final ProviderIdentity? identity;
+
+  /// Codex 专有；Claude 恒为 null。
+  final CodexCredits? credits;
+
+  /// Claude 专有；Codex 恒为 null。
+  final ClaudeSpend? spend;
 }
 
 class UsageParseException implements Exception {
@@ -31,6 +42,28 @@ ParsedUsage parseCodexUsage(String input, DateTime capturedAt) {
   return ParsedUsage(
     snapshot: QuotaSnapshot(windows: marked, capturedAt: capturedAt),
     identity: plan == null ? null : ProviderIdentity(plan: _titleCase(plan)),
+    credits: _codexCredits(root['credits']),
+  );
+}
+
+/// `credits` 缺失或结构异常时返回 null——额外额度不是主额度，
+/// 不能因为它把整份 usage 判成解析失败。
+CodexCredits? _codexCredits(Object? value) {
+  if (value is! Map) {
+    return null;
+  }
+  final row = value.cast<String, Object?>();
+  final balance = row['balance'];
+  return CodexCredits(
+    hasCredits: row['has_credits'] == true,
+    unlimited: row['unlimited'] == true,
+    overageLimitReached: row['overage_limit_reached'] == true,
+    // Provider 给的是十进制字符串；数字形态也接受，但不做四舍五入。
+    balance: switch (balance) {
+      final String text when text.trim().isNotEmpty => text.trim(),
+      final num number when number.isFinite => number.toString(),
+      _ => null,
+    },
   );
 }
 
@@ -183,6 +216,45 @@ ParsedUsage parseClaudeUsage(String input, DateTime capturedAt) {
   return ParsedUsage(
     snapshot: QuotaSnapshot(windows: windows, capturedAt: capturedAt),
     identity: plan == null ? null : ProviderIdentity(plan: _titleCase(plan)),
+    spend: _claudeSpend(root['spend']),
+  );
+}
+
+/// 只读 `spend`，不从 `extra_usage` 兜底。
+///
+/// 2026-08-30 的真实响应里两者数值一致，但 `spend` 结构更完整（自带 currency 与
+/// exponent），而 `extra_usage` 的 `monthly_limit` / `used_credits` 没有显式单位。
+/// 在没有验证过「只有 extra_usage 没有 spend」这种账户形态之前，不为它写兜底分支。
+ClaudeSpend? _claudeSpend(Object? value) {
+  if (value is! Map) {
+    return null;
+  }
+  final row = value.cast<String, Object?>();
+  final percent = row['percent'];
+  return ClaudeSpend(
+    enabled: row['enabled'] == true,
+    used: _money(row['used']),
+    limit: _money(row['limit']),
+    // 这里刻意不用 _optionalFinite：它对非数字会抛，而附属信息不该拖垮主额度。
+    percent: percent is num && percent.isFinite ? percent.toDouble() : null,
+  );
+}
+
+MoneyAmount? _money(Object? value) {
+  if (value is! Map) {
+    return null;
+  }
+  final row = value.cast<String, Object?>();
+  final minor = _optionalInteger(row['amount_minor']);
+  final currency = _text(row['currency']);
+  final exponent = _optionalInteger(row['exponent']);
+  if (minor == null || currency == null || exponent == null || exponent < 0) {
+    return null;
+  }
+  return MoneyAmount(
+    amountMinor: minor,
+    currency: currency,
+    exponent: exponent,
   );
 }
 

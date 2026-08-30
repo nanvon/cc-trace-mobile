@@ -28,6 +28,8 @@ class ProviderFetchResult {
     this.snapshot,
     this.identity,
     this.resetCredits,
+    this.credits,
+    this.spend,
     this.failure,
     this.retryAfter,
   });
@@ -37,12 +39,16 @@ class ProviderFetchResult {
     required QuotaSnapshot snapshot,
     required ProviderIdentity identity,
     ResetCreditsSnapshot? resetCredits,
+    CodexCredits? credits,
+    ClaudeSpend? spend,
   }) {
     return ProviderFetchResult._(
       provider: provider,
       snapshot: snapshot,
       identity: identity,
       resetCredits: resetCredits,
+      credits: credits,
+      spend: spend,
     );
   }
 
@@ -62,6 +68,8 @@ class ProviderFetchResult {
   final QuotaSnapshot? snapshot;
   final ProviderIdentity? identity;
   final ResetCreditsSnapshot? resetCredits;
+  final CodexCredits? credits;
+  final ClaudeSpend? spend;
   final ProviderFetchFailureKind? failure;
   final Duration? retryAfter;
 
@@ -160,6 +168,7 @@ class ProviderApi implements ProviderGateway {
         snapshot: parsed.snapshot,
         identity: _identity(token, parsed.identity),
         resetCredits: resetCredits,
+        credits: parsed.credits,
       );
     }
 
@@ -173,6 +182,7 @@ class ProviderApi implements ProviderGateway {
       provider: provider,
       snapshot: parsed.snapshot,
       identity: _identity(identifiedToken, parsed.identity),
+      spend: parsed.spend,
     );
   }
 

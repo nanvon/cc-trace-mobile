@@ -201,6 +201,83 @@ void main() {
     onboarding.dispose();
     await _clearPhoneSurface(tester);
   });
+
+  testWidgets('credits and extra spend rows render from provider data', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 8, 30, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    await credentials.write(fakeToken(ProviderId.claude, now: now));
+    final controller = _controller(
+      credentials: credentials,
+      now: now,
+      gateway: FakeProviderGateway(
+        (provider) async => fakeSuccess(
+          provider,
+          now: now,
+          credits: const CodexCredits(
+            hasCredits: true,
+            unlimited: false,
+            overageLimitReached: false,
+            balance: '4763.2323960000',
+          ),
+          spend: const ClaudeSpend(
+            enabled: true,
+            used: MoneyAmount(amountMinor: 1739, currency: 'USD', exponent: 2),
+            limit: MoneyAmount(amountMinor: 4000, currency: 'USD', exponent: 2),
+            percent: 43,
+          ),
+        ),
+      ),
+    );
+    await controller.bootstrap();
+    await _pump(tester, controller);
+
+    expect(find.text('CREDITS'), findsOneWidget);
+    // 向下取整加千分位；小数不进界面。
+    expect(find.text('4,763'), findsOneWidget);
+    expect(find.text('EXTRA'), findsOneWidget);
+    expect(find.text(r'$17.39 / $40.00'), findsOneWidget);
+    // 与上方窗口相反，这一行给的是已用而不是剩余，文案必须说清楚。
+    expect(find.text('已用 43%'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('accounts without credits or extra usage get no extra rows', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 8, 30, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    await credentials.write(fakeToken(ProviderId.claude, now: now));
+    final controller = _controller(
+      credentials: credentials,
+      now: now,
+      gateway: FakeProviderGateway(
+        (provider) async => fakeSuccess(
+          provider,
+          now: now,
+          credits: const CodexCredits(
+            hasCredits: false,
+            unlimited: false,
+            overageLimitReached: false,
+          ),
+          spend: const ClaudeSpend(enabled: false),
+        ),
+      ),
+    );
+    await controller.bootstrap();
+    await _pump(tester, controller);
+
+    // 不留写着「--」的占位行。
+    expect(find.text('CREDITS'), findsNothing);
+    expect(find.text('EXTRA'), findsNothing);
+    // 主额度不受影响。
+    expect(find.text('RESETS'), findsOneWidget);
+    controller.dispose();
+  });
+
 }
 
 AppController _controller({

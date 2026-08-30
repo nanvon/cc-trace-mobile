@@ -353,6 +353,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         identity: result.identity,
         snapshot: snapshot,
         resetCredits: result.resetCredits,
+        // credits / spend 与 snapshot 同出一次 usage 响应，因此跟随 snapshot 的
+        // 生命周期：失败时一起转陈旧，不像 resetCredits 那样单独清空。
+        credits: result.credits,
+        spend: result.spend,
         lastSuccessAt: _now(),
         lastAttemptAt: current.lastAttemptAt,
       );

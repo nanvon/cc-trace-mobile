@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -499,6 +500,10 @@ class _ProviderCardState extends State<_ProviderCard>
                           stale: stale,
                           now: () => controller.now,
                         ),
+                      if (_visibleCredits(state) case final credits?)
+                        _CodexCreditsRow(credits: credits, stale: stale),
+                      if (_visibleSpend(state) case final spend?)
+                        _ClaudeSpendRow(spend: spend, stale: stale),
                       if (state.provider == ProviderId.codex &&
                           (state.isSignedIn || state.hasSnapshot))
                         _ResetCreditsRow(credits: state.resetCredits),
@@ -789,14 +794,24 @@ class _QuotaSubRow extends StatelessWidget {
   }
 }
 
-class _ResetCreditsRow extends StatelessWidget {
-  const _ResetCreditsRow({required this.credits});
+/// 卡片底部的附属信息行：上分隔线 + 定宽标签 + 读数 + 右侧补充。
+///
+/// 标签宽度与 [_QuotaSubRow] 一致，让所有次级行的第二列起点对齐。
+class _CardMetaRow extends StatelessWidget {
+  const _CardMetaRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.trailing,
+  });
 
-  final ResetCreditsSnapshot? credits;
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    final earliest = credits?.earliestExpiry;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.only(top: 12),
@@ -807,31 +822,95 @@ class _ResetCreditsRow extends StatelessWidget {
         children: [
           ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 46),
-            child: Text(
-              'RESETS',
-              style: _windowLabelStyle(context, size: 10.5),
-            ),
+            child: Text(label, style: _windowLabelStyle(context, size: 10.5)),
           ),
           const SizedBox(width: 10),
-          Text(
-            credits == null ? '--' : '${credits!.availableCount} 次',
-            style: TextStyle(
-              color: credits == null
-                  ? context.palette.default400
-                  : context.palette.foreground,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              fontFeatures: const [FontFeature.tabularFigures()],
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: valueColor ?? context.palette.foreground,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
           const Spacer(),
-          if (earliest != null)
-            Text(
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _ResetCreditsRow extends StatelessWidget {
+  const _ResetCreditsRow({required this.credits});
+
+  final ResetCreditsSnapshot? credits;
+
+  @override
+  Widget build(BuildContext context) {
+    final earliest = credits?.earliestExpiry;
+    return _CardMetaRow(
+      label: 'RESETS',
+      value: credits == null ? '--' : '${credits!.availableCount} 次',
+      valueColor: credits == null ? context.palette.default400 : null,
+      trailing: earliest == null
+          ? null
+          : Text(
               '最早 ${earliest.month}/${earliest.day} 过期',
               style: _metaStyle(context),
             ),
-        ],
-      ),
+    );
+  }
+}
+
+/// Codex 的额外额度余额。
+///
+/// 它是**点数不是钱**，所以不带货币符号；也不配进度条——没有上限可归一化，
+/// 画一条进度条就得先编一个分母。
+class _CodexCreditsRow extends StatelessWidget {
+  const _CodexCreditsRow({required this.credits, required this.stale});
+
+  final CodexCredits credits;
+  final bool stale;
+
+  @override
+  Widget build(BuildContext context) {
+    return _CardMetaRow(
+      label: 'CREDITS',
+      value: credits.unlimited ? '不限' : _creditsLabel(credits.balance),
+      valueColor: stale ? context.palette.default400 : null,
+      trailing: credits.overageLimitReached
+          ? Text('已达上限', style: _metaStyle(context))
+          : null,
+    );
+  }
+}
+
+/// Claude 订阅额度用尽后按 API 价继续用的月度花费。
+///
+/// 这一行显示的是**已用**，与卡片上方一律显示剩余的额度窗口方向相反，所以右侧
+/// 明写「已用」，也不复用余量四档色——那套颜色的语义是「还剩多少」。
+class _ClaudeSpendRow extends StatelessWidget {
+  const _ClaudeSpendRow({required this.spend, required this.stale});
+
+  final ClaudeSpend spend;
+  final bool stale;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = spend.percent;
+    return _CardMetaRow(
+      label: 'EXTRA',
+      value: '${_moneyLabel(spend.used!)} / ${_moneyLabel(spend.limit!)}',
+      valueColor: stale ? context.palette.default400 : null,
+      trailing: percent == null
+          ? null
+          : Text('已用 ${_whole(percent)}%', style: _metaStyle(context)),
     );
   }
 }
@@ -1316,6 +1395,67 @@ int _whole(double value) => value.round().clamp(0, 100).toInt();
 ///
 /// Claude 的 `weekly_all` 显示成 `ALL`——它要跟同为周窗口的 `OPUS` / `SONNET`
 /// 区分开，写 `WEEKLY` 反而看不出差别；Codex 只有一个周窗口，仍写 `WEEKLY`。
+/// Codex 额外额度这一行该不该出现。
+///
+/// 没买过额外额度的账号 `has_credits` 为 false，这时整行不画——不留写着 `--`
+/// 的占位行（[CLAUDE.md](../../CLAUDE.md) §2）。
+CodexCredits? _visibleCredits(ProviderViewState state) {
+  if (state.provider != ProviderId.codex) {
+    return null;
+  }
+  final credits = state.credits;
+  if (credits == null || !credits.hasCredits) {
+    return null;
+  }
+  return credits.unlimited || credits.balance != null ? credits : null;
+}
+
+/// Claude 额外用量这一行该不该出现。理由同 [_visibleCredits]：
+/// 没开启额外用量、或金额只给了一半时不画。
+ClaudeSpend? _visibleSpend(ProviderViewState state) {
+  if (state.provider != ProviderId.claude) {
+    return null;
+  }
+  final spend = state.spend;
+  if (spend == null || !spend.enabled || !spend.hasAmounts) {
+    return null;
+  }
+  return spend;
+}
+
+/// Codex credits 余额：向下取整并加千分位。
+///
+/// 向下取整而不是四舍五入——余额显示得比实际低不会误事，反过来会。
+String _creditsLabel(String? balance) {
+  final value = balance == null ? null : double.tryParse(balance);
+  if (value == null || !value.isFinite || value.isNegative) {
+    return '--';
+  }
+  return _grouped(value.floor().toString());
+}
+
+/// 最小货币单位还原成面值。USD 用 `$`，其它货币直接跟代码，不猜符号。
+String _moneyLabel(MoneyAmount amount) {
+  final value = amount.amountMinor / math.pow(10, amount.exponent);
+  final parts = value.toStringAsFixed(amount.exponent).split('.');
+  final text = parts.length > 1
+      ? '${_grouped(parts.first)}.${parts[1]}'
+      : _grouped(parts.first);
+  return amount.currency == 'USD' ? '\$$text' : '$text ${amount.currency}';
+}
+
+/// 千分位。四位以上的读数在手机上很容易看错一个数量级。
+String _grouped(String integer) {
+  final buffer = StringBuffer();
+  for (var index = 0; index < integer.length; index++) {
+    if (index > 0 && (integer.length - index) % 3 == 0) {
+      buffer.write(',');
+    }
+    buffer.write(integer[index]);
+  }
+  return buffer.toString();
+}
+
 String _windowLabel(ProviderId provider, QuotaWindow window) {
   return switch (window.kind) {
     QuotaWindowKind.fiveHour => '5HOUR',

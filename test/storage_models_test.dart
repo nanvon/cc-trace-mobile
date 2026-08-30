@@ -188,4 +188,70 @@ void main() {
       isNot(contains('sample@example.com')),
     );
   });
+
+  test('quota cache carries codex credits and claude spend', () {
+    final now = DateTime(2026, 8, 30, 9);
+    final codex = ProviderViewState(
+      provider: ProviderId.codex,
+      refresh: RefreshState.idle,
+      freshness: SnapshotFreshness.live,
+      availability: ProviderAvailability.ready,
+      isSignedIn: true,
+      snapshot: fakeSnapshot(ProviderId.codex, now: now),
+      credits: const CodexCredits(
+        hasCredits: true,
+        unlimited: false,
+        overageLimitReached: false,
+        balance: '4763.2323960000',
+      ),
+      lastSuccessAt: now,
+    );
+    final claude = ProviderViewState(
+      provider: ProviderId.claude,
+      refresh: RefreshState.idle,
+      freshness: SnapshotFreshness.live,
+      availability: ProviderAvailability.ready,
+      isSignedIn: true,
+      snapshot: fakeSnapshot(ProviderId.claude, now: now),
+      spend: const ClaudeSpend(
+        enabled: true,
+        used: MoneyAmount(amountMinor: 1739, currency: 'USD', exponent: 2),
+        limit: MoneyAmount(amountMinor: 4000, currency: 'USD', exponent: 2),
+        percent: 43,
+      ),
+      lastSuccessAt: now,
+    );
+
+    ProviderViewState roundTrip(ProviderViewState state) {
+      final decoded = jsonDecode(jsonEncode(state.toCacheJson()));
+      return ProviderViewState.fromCacheJson(
+        (decoded as Map).cast<String, Object?>(),
+      );
+    }
+
+    final restoredCodex = roundTrip(codex);
+    final restoredClaude = roundTrip(claude);
+
+    expect(restoredCodex.credits?.hasCredits, isTrue);
+    // 精度必须原样穿过缓存，不能在序列化时被转成浮点。
+    expect(restoredCodex.credits?.balance, '4763.2323960000');
+    expect(restoredCodex.spend, isNull);
+    expect(restoredClaude.spend?.enabled, isTrue);
+    expect(restoredClaude.spend?.used?.amountMinor, 1739);
+    expect(restoredClaude.spend?.limit?.currency, 'USD');
+    expect(restoredClaude.spend?.percent, 43);
+    expect(restoredClaude.credits, isNull);
+  });
+
+  test('cache entries written before credits and spend existed still load', () {
+    final restored = ProviderViewState.fromCacheJson({
+      'provider': 'codex',
+      'snapshot': fakeSnapshot(ProviderId.codex).toJson(),
+      'lastSuccessAt': null,
+    });
+
+    expect(restored.credits, isNull);
+    expect(restored.spend, isNull);
+    expect(restored.hasSnapshot, isTrue);
+  });
 }

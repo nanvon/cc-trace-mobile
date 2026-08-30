@@ -157,6 +157,8 @@ ProviderFetchResult fakeSuccess(
   DateTime? now,
   double remaining = 59,
   bool includeModel = false,
+  CodexCredits? credits,
+  ClaudeSpend? spend,
 }) {
   return ProviderFetchResult.success(
     provider: provider,
@@ -194,5 +196,9 @@ ProviderFetchResult fakeSuccess(
             ],
           )
         : null,
+    // 两者各自只属于一家 Provider，按 provider 分派，避免造出真实响应里
+    // 不可能出现的组合。
+    credits: provider == ProviderId.codex ? credits : null,
+    spend: provider == ProviderId.claude ? spend : null,
   );
 }
