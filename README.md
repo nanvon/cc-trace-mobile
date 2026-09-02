@@ -4,110 +4,167 @@
 
 <h1 align="center">CC Trace Mobile</h1>
 
-<p align="center">iOS / Android 应用:随时查看 Codex 与 Claude Code 的剩余额度与重置时间,<br>不用回到电脑前。</p>
+<p align="center">
+  <b>iOS / Android 移动端 AI 额度监控看板</b><br>
+  随身追踪 Codex 与 Claude Code 配额用量、重置倒计时与额外用量，无需折返电脑。
+</p>
 
 <p align="center">
   <img alt="iOS" src="https://img.shields.io/badge/iOS-13%2B-000000?logo=apple&logoColor=white">
   <img alt="Android" src="https://img.shields.io/badge/Android-arm64-3DDC84?logo=android&logoColor=white">
   <img alt="Flutter" src="https://img.shields.io/badge/Flutter-02569B?logo=flutter&logoColor=white">
-  <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/nanvon/cc-trace-mobile?color=brightgreen"></a>
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-orange">
+  <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/nanvon/cc-trace-mobile?color=brightgreen"></a>
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-orange">
 </p>
 
 <p align="center">
-  <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest">下载</a> ·
-  <a href="#-安装">安装</a> ·
+  <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest">下载安装</a> ·
+  <a href="#-核心特性">功能特性</a> ·
+  <a href="#-快速安装">安装指南</a> ·
+  <a href="#-数据与隐私安全">安全说明</a> ·
   <a href="#-从源码构建">从源码构建</a> ·
-  <a href="#-相关项目">相关项目</a> ·
-  <a href="https://github.com/nanvon/cc-trace-mobile/issues">反馈</a> ·
+  <a href="https://github.com/nanvon/cc-trace-mobile/issues">问题反馈</a> ·
   <a href="README_EN.md">English</a>
 </p>
 
-<!-- 头部截图占位:补充 docs/images/ 下的深浅色额度主屏截图后替换本注释:
-<p align="center">
-  <img src="docs/images/home-light.png" width="360" alt="额度总览 - 浅色模式">
-  <img src="docs/images/home-dark.png" width="360" alt="额度总览 - 深色模式">
-</p>
--->
+---
 
-## ✨ 功能
+## ✨ 核心特性
 
-- **额度总览** —— Codex 与 Claude Code 的 5 小时 / 周窗口剩余额度与重置倒计时,进度条按余量分档变色;Codex 的额外重置次数与 Claude Code 的模型专项额度单独展示;下拉即可刷新
-- **账号登录** —— 拉起系统浏览器走 Provider 官方登录页,标准 OAuth + PKCE,不在应用内输入密码;两个服务可以只登录一个
-- **设置项** —— 账户登录 / 退出、外观(跟随系统 / 浅色 / 深色)、刷新间隔(15 / 30 / 60 分钟,默认 30)
-- **克制的刷新** —— 自动刷新只在前台运行,不发通知、不后台轮询;手动刷新有 1 分钟节流,被限流时按梯度退避;取不到新数据时旧数据标注时间,不伪装成最新
+### ⚡ 双引擎额度透视
+* **多时间窗口监控** — 实时拉取 Codex 与 Claude Code 的 5 小时会话窗口及每周额度窗口，展示精确剩余百分比与重置倒计时。
+* **四档状态色进度条** — 剩余额度按健康度分档着色（剩余 >50% 绿、20%~50% 黄、<20% 橙、0% 红），余量状态一目了然。
+* **额外额度与用量追踪** — 自动探测并独立展示 Codex 的 Reset Credits 额外额度点数，以及 Claude Code 本月额外用量的已花金额、预算上限与消耗占比。
+* **模型级专项额度** — 完整支持解析 Claude Code 高级套餐中的模型专属周额度窗口（如 Opus / Sonnet / Haiku 专项额度）。
 
-### 📸 界面预览
+### 🔐 原生授权与本地存储
+* **标准 OAuth 2.0 PKCE** — 调起系统外部独立浏览器在 Provider 官方域名完成登录，应用内不接收、不存储用户账号密码。
+* **本地回环安全回调** — 内置本地 HTTP 回环服务器接收重定向回调，端口占用自动顺延（Codex 1455 / 1457，Claude 41999 / 41998 / 41997）。
+* **硬件级安全存储** — 访问凭据严格保存在 iOS Keychain（仅本设备解锁可读）与 Android Keystore（加密命名空间 `cc_trace_mobile`）。
+* **独立多账号登录** — Codex 与 Claude Code 相互解耦，可单独登录其中一个服务，退出登录时自动清除对应凭据与额度缓存。
 
-<!-- 截图占位:建议补充以下素材(放 docs/images/ 下,竖屏手机截图)后替换本表格。
-     1. home-light.png / home-dark.png  额度主屏(两个服务 + 进度条 + 倒计时)
-     2. settings.png                    设置页(账户 / 外观 / 刷新间隔)
--->
+### 🍃 克制低耗的运行策略
+* **前台纯净运行** — 自动刷新仅在前台激活时运行，支持自定义刷新间隔（15 / 30 / 60 分钟，默认 30 分钟），零后台常驻轮询、零系统通知打扰。
+* **请求节流与指数退避** — 手动下拉刷新具备 1 分钟最小节流保护；遭遇 Provider 429 限流时自动遵循梯度指数退避，严防账号被限频。
+* **三维状态契约** — 采用「活动状态 / 快照新鲜度 / 失败原因」三维状态表达；网络波动或异常时保留最近一次有效快照并标注抓取时间，绝不伪装为最新数据。
+* **Android 登录保活与诊断** — 在 Android 端提供登录期短时前台服务保活（防止切到浏览器时后台进程被杀）、应用内浏览器选择器及登录排错诊断日志。
 
-|               额度总览                |               设置页                 |
-| :-----------------------------------: | :----------------------------------: |
-| _待补充 `docs/images/home-light.png`_ | _待补充 `docs/images/settings.png`_ |
+### 🎨 现代化设计规范
+* **HeroUI 视觉系统** — 继承桌面端 HeroUI 设计语言与 Slate 冷灰调性，提供极简圆润、低视觉噪点的界面质感。
+* **深浅主题自适应** — 支持跟随系统、强制浅色、强制深色三档外观偏好；在 Android 15 及更高版本中原生支持 edge-to-edge 全面屏布局。
 
-## 📦 安装
+---
 
-🍎 要求 iOS 13 或更高,或 arm64 Android 设备;需要 Codex 或 Claude Code 的付费订阅(至少一个)。
+## 📦 快速安装
 
-**Android**:从 [Releases](https://github.com/nanvon/cc-trace-mobile/releases/latest) 下载 `CC-Trace-Mobile_<版本>_Android-arm64.apk` 直接安装。APK 经正式签名,附同名 `.sha256` 可校验;首次安装需在系统里允许「安装未知来源应用」。
+> **支持平台**：iOS 13.0+ · Android (arm64-v8a)<br>
+> **前置要求**：拥有 Codex 或 Claude Code 的有效付费订阅（至少登录一个）。
 
-**iOS**:没有 App Store 版本、TestFlight 或 IPA——本项目不购买 Apple 开发者账号,只支持用**免费 Apple ID** 自签安装(每 7 天需重签一次)。需要一台装好 Xcode 的 Mac:
+### Android (推荐)
+从 [Releases 页面](https://github.com/nanvon/cc-trace-mobile/releases/latest) 下载最新版本的 `CC-Trace-Mobile_<版本>_Android-arm64.apk` 直接安装：
+- APK 经过正式 Release 密钥签名，并随附同名 `.sha256` 校验文件供完整性核验。
+- 首次安装时请在系统设置中允许「安装未知来源应用」。
+
+### iOS (自签安装)
+根据项目安全与分发原则，本项目不购买 Apple 开发者计划，**不提供 App Store、TestFlight 或预编译 IPA 分发**。支持使用**免费 Apple ID** 在本地通过 Xcode 自签编译到真机（受 Apple 限制，每 7 天需重新签名一次）：
 
 ```bash
-flutter pub get
-flutter run --release   # 连上设备,用你自己的 Apple ID 签名
+# 1. 克隆仓库并安装依赖
+git clone https://github.com/nanvon/cc-trace-mobile.git
+cd cc-trace-mobile
+flutter pub get --enforce-lockfile
+
+# 2. 连上 iOS 设备并以 Release 模式运行（在 Xcode 中配置自己的 Apple ID 个人证书）
+flutter run --release
 ```
 
 > [!NOTE]
-> iOS 自签到真机这条路径尚未完整验证;CI 持续验证的是 `flutter build ios --release --no-codesign` 能编译通过。Android 已在真机完成登录与额度实调的端到端验证(具体版本、设备与场景见 [当前验证状态](docs/当前验证状态.md))。
+> **真实设备验证状态说明**
+> - **Android**：正式签名 arm64 APK 构建与 59 项单元/集成测试已纳入 CI 门禁。
+> - **iOS**：CI 持续验证无签名 Release 编译（`flutter build ios --release --no-codesign`）通过；真机环境建议通过免费 Apple ID 本地签名调试。
 
-## 🔒 数据与安全
+---
 
-CC Trace Mobile 是为个人需求开发的开源小工具,**没有自己的服务器**——没有后端、没有遥测、没有崩溃上报:
+## 🔒 数据与隐私安全
 
-- 只向 Codex 与 Claude Code 的官方接口请求额度数据,凭据不发给任何第三方
-- 凭据保存在 iOS Keychain / Android Keystore,额度缓存只落在本机
-- 不读取、不上传对话内容和代码;token 不进日志、不进缓存、不进任何调试输出
-- 退出登录会同时删掉本机保存的凭据和额度缓存
+CC Trace Mobile 坚持**本地优先与零服务端中转**架构，全流程无任何自建后端服务：
+
+### 凭据存储与安全机制
+
+| 服务 / 模块 | 凭据存储位置 | 读写权限 | 行为机制与安全保障 |
+| :--- | :--- | :---: | :--- |
+| **Codex** | iOS Keychain / Android Keystore (`cc_trace_mobile`) | 读 / 写 | 标准 OAuth 2.0 PKCE 流程；本地回环端口（1455 / 1457）接收授权码；仅向官方用量接口请求数据，临期自动续期 |
+| **Claude Code** | iOS Keychain / Android Keystore (`cc_trace_mobile`) | 读 / 写 | 标准 OAuth 2.0 PKCE 流程；本地回环端口（41999 顺延）接收授权码；仅向官方用量接口请求数据 |
+| **额度快照缓存** | 本机 SharedPreferences | 读 / 写 | 仅在本地持久化最近一次成功拉取的额度数值与更新时间戳，供断网离线时回显；退出登录时与安全凭据一同彻底擦除 |
+
+### 零遥测与透明度承诺
+* **无自建服务器**：应用完全没有自建后端，所有请求均直接与 OpenAI / Anthropic 官方授权及用量接口通信，不经过任何第三方代理。
+* **零外部遥测与追踪**：不集成任何数据统计、崩溃分析或第三方商业 SDK，不上传用户设备标识与使用习惯。
+* **内存与日志防护**：Access Token、Refresh Token、授权码（Code）在代码层面实施严格过滤，绝不输出至控制台日志、绝不进调试文件、绝不暴露于前端页面。
+* **完全擦除机制**：在设置页中退出登录时，将立即清空对应服务的 Keychain / Keystore 密钥与本地快照缓存。
 
 > [!TIP]
-> 登录与额度查询使用官方 CLI 所用的 client ID 与非公开用量接口,Provider 收紧策略时可能直接失效;如果介意,可以自行审阅代码后[从源码构建](#-从源码构建)。
+> 登录与额度查询对接的是官方 CLI 所采用的 Client ID 与接口规范。如需完全审阅网络通信与存储实现，欢迎[从源码自主构建](#-从源码构建)。
+
+---
 
 ## 🔧 从源码构建
 
-技术栈:Flutter / Dart。运行时依赖只有四个:`http`、`crypto`、`flutter_secure_storage`、`shared_preferences`。
+项目基于 Flutter 与 Dart 构建，保持最小化依赖设计。
 
-**日常开发**:`flutter pub get --enforce-lockfile` 后 `flutter run`。
+### 环境准备
+- **Flutter SDK**：3.24+ (Dart ^3.12.2)
+- **Android 构建**：JDK 17 + Android SDK (API 34+)
+- **iOS 构建**：macOS + Xcode 15+
 
-**打包分发**:
-
+### 本地日常开发
 ```bash
-flutter analyze && flutter test
-flutter build apk --release --target-platform android-arm64   # Android
-flutter build ios --release --no-codesign                     # iOS(无签名编译)
+# 检查依赖版本并安装
+flutter pub get --enforce-lockfile
+
+# 运行全量静态检查与自动化测试
+flutter analyze
+flutter test
+
+# 启动本地调试
+flutter run
 ```
 
-推送与 `pubspec.yaml` 版本匹配的 `v*` tag 后,CI 会用正式签名密钥构建 release APK 并创建公开 Release,详见 [GitHub 自动构建与发布](docs/GitHub自动构建与发布.md)。
+### 生产打包命令
+```bash
+# 构建 Android 正式 arm64 APK
+flutter build apk --release --target-platform android-arm64
+
+# 构建 iOS 无签名 Release 产物
+flutter build ios --release --no-codesign
+```
+
+> [!TIP]
+> 更多有关 Android 证书生成、钉扎验证与 GitHub Actions 自动发版流程，请参阅 [GitHub 自动构建与发布](docs/GitHub自动构建与发布.md) 与 [Android 正式签名与发布](docs/Android正式签名与发布.md)。
+
+---
 
 ## 🔗 相关项目
 
-同一作者的三个应用,共享同一套额度口径与视觉语言:
+同作者系列工具，共享同一套配额口径、状态契约与四档状态色规范：
 
-|                                                    |                                        |
-| -------------------------------------------------- | -------------------------------------- |
-| [**cc-bar**](https://github.com/nanvon/cc-bar)     | macOS 原生菜单栏版(SwiftUI)          |
-| [**CC Trace**](https://github.com/nanvon/cc-trace) | 桌面端 · macOS 菜单栏 / Windows 托盘   |
-| **CC Trace Mobile**(本仓库)                      | 移动端 · iOS / Android                 |
+| 项目 | 平台形态 | 技术栈 | 特点 |
+| :--- | :--- | :--- | :--- |
+| [**cc-bar**](https://github.com/nanvon/cc-bar) | macOS 原生菜单栏工具 | Swift / SwiftUI | 原生极低资源占用，菜单栏直显百分比，集成桌面 HUD 悬浮窗与本地会话统计 |
+| [**CC Trace**](https://github.com/nanvon/cc-trace) | 桌面客户端（macOS / Windows） | Tauri / Web (HeroUI) | 跨平台桌面托盘与浮窗，支持多引擎额度与用量透视 |
+| **CC Trace Mobile**（本仓库） | 移动端伴侣（iOS / Android） | Flutter / Dart | 手机端便携监控，双引擎官方 OAuth 直连，离线快照回显，克制低功耗 |
 
-三个应用相互独立,数据与设置不互通。
+> [!NOTE]
+> 三个应用各自独立运行，数据与配置在本地独立存储，互不相通，无需部署中转服务器。
+
+---
 
 ## 📢 免责声明
 
-本项目不是 OpenAI 或 Anthropic 的官方产品,与两家公司无关,也未获得其认可或支持。Codex、Claude 及相关名称归各自所有者。
+本项目为开源个人工具，非 OpenAI 或 Anthropic 的官方产品，与两家公司无任何商业关联，亦未获得其官方认可或赞助。Codex、Claude 及相关商标归各自所有者所有。
+
+---
 
 ## 📄 许可证
 
-[MIT](LICENSE)
+本项目基于 [MIT](LICENSE) 许可证开源。
