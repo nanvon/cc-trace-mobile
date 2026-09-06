@@ -12,6 +12,10 @@ import '../providers/provider_api.dart';
 import '../storage/credentials_store.dart';
 import '../storage/local_store.dart';
 
+/// 手动刷新之间的最小间隔：只挡误触和连点。
+/// 上游限流不靠它，由 `_providerHeldUntil` 的退避兜底。
+const _manualRefreshThrottle = Duration(seconds: 10);
+
 class AppController extends ChangeNotifier with WidgetsBindingObserver {
   AppController({
     required CredentialsStore credentials,
@@ -225,9 +229,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final now = _now();
     if (manual) {
-      final next = _lastManualRefresh?.add(const Duration(minutes: 1));
+      final next = _lastManualRefresh?.add(_manualRefreshThrottle);
       if (next != null && now.isBefore(next)) {
-        _showHeldNotice(next);
+        _showHeldNotice(next, throttled: true);
         return;
       }
       _lastManualRefresh = now;
@@ -633,14 +637,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  void _showHeldNotice(DateTime until) {
+  void _showHeldNotice(DateTime until, {bool throttled = false}) {
     final seconds = until
         .difference(_now())
         .inSeconds
         .clamp(1, 2147483647)
         .toInt();
-    final minutes = (seconds / 60).ceil();
-    _notice = minutes <= 1 ? '刚刷新过，1 分钟后可再试' : '刷新暂缓，约 $minutes 分钟后可再试';
+    final wait = seconds < 60 ? '$seconds 秒' : '约 ${(seconds / 60).ceil()} 分钟';
+    _notice = throttled ? '刚刷新过，$wait后可再试' : '刷新暂缓，$wait后可再试';
     _scheduleNoticeClear(until: until);
     notifyListeners();
   }

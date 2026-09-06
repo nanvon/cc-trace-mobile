@@ -132,7 +132,7 @@ void main() {
     },
   );
 
-  test('manual refresh is refused during the one minute throttle', () async {
+  test('manual refresh is refused during the ten second throttle', () async {
     final now = DateTime(2026, 7, 29, 9);
     final credentials = MemoryCredentialsStore();
     await credentials.write(fakeToken(ProviderId.codex, now: now));
@@ -156,7 +156,7 @@ void main() {
 
     expect(afterFirstManual, startupCalls + 1);
     expect(gateway.calls, hasLength(afterFirstManual));
-    expect(controller.notice, contains('1 分钟后'));
+    expect(controller.notice, contains('10 秒后'));
     controller.dispose();
   });
 
