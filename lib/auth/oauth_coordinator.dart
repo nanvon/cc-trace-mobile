@@ -11,7 +11,7 @@ import '../network/abortable_http.dart';
 import '../q3/browser_bridge.dart';
 import 'oauth_callback_server.dart';
 import 'oauth_config.dart';
-import 'oauth_diagnostics.dart';
+import '../diagnostics/app_diagnostics.dart';
 import 'oauth_keep_alive.dart';
 import 'oauth_material.dart';
 import 'token_bundle.dart';
@@ -21,6 +21,9 @@ enum OAuthFailureKind {
   timeout,
   portUnavailable,
   browserUnavailable,
+  /// 换 token 时根本没连上：断网、代理挂了、TLS 握手失败、代理要求认证。
+  /// 和 [tokenExchange] 分开，是因为那一档会让用户以为凭据有问题。
+  network,
   tokenExchange,
   invalidResponse,
   secureStorage,
@@ -71,21 +74,21 @@ class OAuthCoordinator implements OAuthGateway {
     BrowserLauncherFactory? browserFactory,
     Map<ProviderId, OAuthConfig>? configs,
     SignInKeepAlive? keepAlive,
-    OAuthDiagnostics? diagnostics,
+    AppDiagnostics? diagnostics,
     this.timeout = const Duration(minutes: 3),
   }) : _client = client ?? http.Client(),
        _ownsClient = client == null,
        _browserFactory = browserFactory ?? OAuthBrowserBridge.new,
        _configs = configs ?? providerConfigs,
        _keepAlive = keepAlive ?? const PlatformSignInKeepAlive(),
-       _diagnostics = diagnostics ?? OAuthDiagnostics.instance;
+       _diagnostics = diagnostics ?? AppDiagnostics.instance;
 
   final http.Client _client;
   final bool _ownsClient;
   final BrowserLauncherFactory _browserFactory;
   final Map<ProviderId, OAuthConfig> _configs;
   final SignInKeepAlive _keepAlive;
-  final OAuthDiagnostics _diagnostics;
+  final AppDiagnostics _diagnostics;
 
   /// Android `shortService` 的前台服务上限也是 3 分钟，两者保持一致，
   /// 避免出现「保活已经结束但界面还在等」的空窗。
@@ -340,11 +343,27 @@ class OAuthCoordinator implements OAuthGateway {
         });
       }
       response = await sendWithTimeout(_client, request);
+    } on TimeoutException {
+      _diagnostics.record('token.exchange', {'transport': 'timeout'});
+      throw const OAuthFailure(OAuthFailureKind.network);
+    } on SocketException {
+      _diagnostics.record('token.exchange', {'transport': 'unreachable'});
+      throw const OAuthFailure(OAuthFailureKind.network);
+    } on TlsException {
+      _diagnostics.record('token.exchange', {'transport': 'tls'});
+      throw const OAuthFailure(OAuthFailureKind.network);
+    } on http.ClientException {
+      _diagnostics.record('token.exchange', {'transport': 'unreachable'});
+      throw const OAuthFailure(OAuthFailureKind.network);
     } on Object {
       _diagnostics.record('token.exchange', {'transport': 'failed'});
       throw const OAuthFailure(OAuthFailureKind.tokenExchange);
     }
     _diagnostics.record('token.exchange', {'status': response.statusCode});
+    // 407 和 5xx 都不是 Provider 对这次交换的回答，是链路上的东西答的。
+    if (response.statusCode == 407 || response.statusCode >= 500) {
+      throw const OAuthFailure(OAuthFailureKind.network);
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const OAuthFailure(OAuthFailureKind.tokenExchange);
     }

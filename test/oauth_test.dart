@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:cc_trace_mobile/auth/oauth_callback_server.dart';
 import 'package:cc_trace_mobile/auth/oauth_config.dart';
 import 'package:cc_trace_mobile/auth/oauth_coordinator.dart';
-import 'package:cc_trace_mobile/auth/oauth_diagnostics.dart';
+import 'package:cc_trace_mobile/diagnostics/app_diagnostics.dart';
 import 'package:cc_trace_mobile/auth/oauth_keep_alive.dart';
 import 'package:cc_trace_mobile/auth/oauth_material.dart';
 import 'package:cc_trace_mobile/auth/token_bundle.dart';
@@ -203,7 +203,7 @@ void main() {
         ),
       ],
     );
-    final diagnostics = OAuthDiagnostics();
+    final diagnostics = AppDiagnostics();
     final coordinator = _coordinator(browser, diagnostics: diagnostics);
     final phases = <OAuthPhase>[];
     final subscription = coordinator.phases.listen(phases.add);
@@ -343,13 +343,13 @@ const _claudeTestConfig = OAuthConfig(
 
 OAuthCoordinator _coordinator(
   BrowserLauncher browser, {
-  OAuthDiagnostics? diagnostics,
+  AppDiagnostics? diagnostics,
   Duration? timeout,
 }) {
   return OAuthCoordinator(
     browserFactory: () => browser,
     keepAlive: const NoopSignInKeepAlive(),
-    diagnostics: diagnostics ?? OAuthDiagnostics(),
+    diagnostics: diagnostics ?? AppDiagnostics(),
     timeout: timeout ?? const Duration(minutes: 3),
     configs: const {ProviderId.claude: _claudeTestConfig},
     client: MockClient((request) async {

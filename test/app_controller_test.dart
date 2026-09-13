@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cc_trace_mobile/app/app_controller.dart';
+import 'package:cc_trace_mobile/diagnostics/app_diagnostics.dart';
 import 'package:cc_trace_mobile/domain/quota_models.dart';
 import 'package:cc_trace_mobile/providers/provider_api.dart';
 import 'package:cc_trace_mobile/storage/credentials_store.dart';
@@ -95,6 +96,82 @@ void main() {
     expect(gateway.calls, [ProviderId.codex]);
     await controller.refreshProvider(ProviderId.codex);
     expect(gateway.calls, [ProviderId.codex]);
+    controller.dispose();
+  });
+
+  test('a manual refresh is not blocked by a credential failure', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    final gateway = FakeProviderGateway(
+      (provider) async => ProviderFetchResult.failure(
+        provider: provider,
+        failure: ProviderFetchFailureKind.credentials,
+      ),
+    );
+    final controller = AppController(
+      credentials: credentials,
+      localStore: MemoryLocalStore()..installed = true,
+      oauth: FakeOAuthGateway(),
+      providerApi: gateway,
+      now: () => now,
+    );
+
+    await controller.bootstrap();
+    expect(
+      controller.provider(ProviderId.codex).errorKind,
+      ErrorKind.credentials,
+    );
+    expect(gateway.calls, [ProviderId.codex]);
+
+    // 自动路径仍然挡住，避免对真失效的凭据反复轮询。
+    await controller.refreshProvider(ProviderId.codex);
+    expect(gateway.calls, [ProviderId.codex]);
+
+    // 手动路径放行：判定可能来自一次网络异常，用户下拉一次就该能自愈。
+    await controller.refreshProvider(ProviderId.codex, manual: true);
+    expect(gateway.calls, [ProviderId.codex, ProviderId.codex]);
+
+    await controller.refreshAll(manual: true);
+    expect(gateway.calls.length, 3);
+    controller.dispose();
+  });
+
+  test('a non-credential outcome lifts the credential block', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    var failure = ProviderFetchFailureKind.credentials;
+    var clock = now;
+    final gateway = FakeProviderGateway(
+      (provider) async =>
+          ProviderFetchResult.failure(provider: provider, failure: failure),
+    );
+    final controller = AppController(
+      credentials: credentials,
+      localStore: MemoryLocalStore()..installed = true,
+      oauth: FakeOAuthGateway(),
+      providerApi: gateway,
+      now: () => clock,
+    );
+
+    await controller.bootstrap();
+    expect(gateway.calls.length, 1);
+
+    // 网络还没好，手动刷新换来 offline：这一次就足以推翻上次的凭据判定。
+    failure = ProviderFetchFailureKind.offline;
+    await controller.refreshProvider(ProviderId.codex, manual: true);
+    expect(gateway.calls.length, 2);
+    expect(controller.provider(ProviderId.codex).errorKind, isNull);
+    expect(
+      controller.provider(ProviderId.codex).availability,
+      ProviderAvailability.offline,
+    );
+
+    // 自动路径随之恢复，不必再让用户手动刷一次。越过 offline 那一档退避即可。
+    clock = now.add(const Duration(minutes: 2));
+    await controller.refreshProvider(ProviderId.codex);
+    expect(gateway.calls.length, 3);
     controller.dispose();
   });
 
@@ -408,40 +485,110 @@ void main() {
     },
   );
 
-  test(
-    'auto refresh runs again after the backoff window expires',
-    () async {
-      var now = DateTime(2026, 7, 29, 9);
-      final credentials = MemoryCredentialsStore();
-      await credentials.write(fakeToken(ProviderId.codex, now: now));
-      final gateway = FakeProviderGateway(
+  test('auto refresh runs again after the backoff window expires', () async {
+    var now = DateTime(2026, 7, 29, 9);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    final gateway = FakeProviderGateway(
+      (provider) async => ProviderFetchResult.failure(
+        provider: provider,
+        failure: ProviderFetchFailureKind.rateLimited,
+        retryAfter: const Duration(hours: 1),
+      ),
+    );
+    final controller = AppController(
+      credentials: credentials,
+      localStore: MemoryLocalStore()..installed = true,
+      oauth: FakeOAuthGateway(),
+      providerApi: gateway,
+      now: () => now,
+    );
+
+    await controller.bootstrap();
+    expect(gateway.calls, [ProviderId.codex]);
+
+    controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+    now = now.add(const Duration(hours: 1, minutes: 1));
+    controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (controller.isRefreshing && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(gateway.calls, [ProviderId.codex, ProviderId.codex]);
+    controller.dispose();
+  });
+
+  test('a failed refresh lands in the diagnostics log', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final diagnostics = AppDiagnostics(now: () => now);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    final controller = AppController(
+      credentials: credentials,
+      localStore: MemoryLocalStore()..installed = true,
+      oauth: FakeOAuthGateway(),
+      providerApi: FakeProviderGateway(
         (provider) async => ProviderFetchResult.failure(
           provider: provider,
-          failure: ProviderFetchFailureKind.rateLimited,
-          retryAfter: const Duration(hours: 1),
+          failure: ProviderFetchFailureKind.offline,
         ),
-      );
-      final controller = AppController(
-        credentials: credentials,
-        localStore: MemoryLocalStore()..installed = true,
-        oauth: FakeOAuthGateway(),
-        providerApi: gateway,
-        now: () => now,
-      );
+      ),
+      now: () => now,
+      diagnostics: diagnostics,
+    );
 
-      await controller.bootstrap();
-      expect(gateway.calls, [ProviderId.codex]);
+    await controller.bootstrap();
 
-      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
-      now = now.add(const Duration(hours: 1, minutes: 1));
-      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    final exported = diagnostics.export();
+    expect(exported, contains('bootstrap.done'));
+    expect(exported, contains('refresh.failed'));
+    expect(exported, contains('provider=codex'));
+    expect(exported, contains('kind=offline'));
+    // 退避时长是判断「为什么迟迟不重试」的关键。
+    expect(exported, contains('retryInSec=30'));
+    // 账号信息一律不入日志。
+    expect(exported, isNot(contains('@')));
+    controller.dispose();
+    diagnostics.dispose();
+  });
 
-      final deadline = DateTime.now().add(const Duration(seconds: 5));
-      while (controller.isRefreshing && DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(gateway.calls, [ProviderId.codex, ProviderId.codex]);
-      controller.dispose();
-    },
-  );
+  test('recovering from a failure is logged, a plain success is not', () async {
+    var now = DateTime(2026, 7, 29, 9);
+    final diagnostics = AppDiagnostics(now: () => now);
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(fakeToken(ProviderId.codex, now: now));
+    var failing = true;
+    final controller = AppController(
+      credentials: credentials,
+      localStore: MemoryLocalStore()..installed = true,
+      oauth: FakeOAuthGateway(),
+      providerApi: FakeProviderGateway(
+        (provider) async => failing
+            ? ProviderFetchResult.failure(
+                provider: provider,
+                failure: ProviderFetchFailureKind.offline,
+              )
+            : fakeSuccess(provider, now: now),
+      ),
+      now: () => now,
+      diagnostics: diagnostics,
+    );
+
+    await controller.bootstrap();
+    expect(diagnostics.export(), isNot(contains('refresh.recovered')));
+
+    failing = false;
+    now = now.add(const Duration(minutes: 2));
+    await controller.refreshAll(manual: true);
+    expect(diagnostics.export(), contains('refresh.recovered'));
+
+    // 已经正常之后再刷一次，不该再添新记录。
+    final before = diagnostics.entries.length;
+    now = now.add(const Duration(minutes: 2));
+    await controller.refreshAll(manual: true);
+    expect(diagnostics.entries.length, before);
+    controller.dispose();
+    diagnostics.dispose();
+  });
 }

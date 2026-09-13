@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../auth/oauth_coordinator.dart';
 import '../auth/token_bundle.dart';
+import '../diagnostics/app_diagnostics.dart';
 import '../domain/app_settings.dart';
 import '../domain/quota_models.dart';
 import '../providers/provider_api.dart';
@@ -23,11 +24,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     required OAuthGateway oauth,
     required ProviderGateway providerApi,
     DateTime Function()? now,
+    AppDiagnostics? diagnostics,
   }) : _credentials = credentials,
        _localStore = localStore,
        _oauth = oauth,
        _providerApi = providerApi,
        _now = now ?? DateTime.now,
+       _diagnostics = diagnostics ?? AppDiagnostics.instance,
        _providers = {
          for (final provider in ProviderId.values)
            provider: ProviderViewState.initial(provider),
@@ -38,6 +41,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   final OAuthGateway _oauth;
   final ProviderGateway _providerApi;
   final DateTime Function() _now;
+  final AppDiagnostics _diagnostics;
   final Map<ProviderId, ProviderViewState> _providers;
   final Map<ProviderId, _RefreshFlight> _refreshing = {};
   final Map<ProviderId, int> _authGenerations = {};
@@ -77,7 +81,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     try {
       await _bootstrap();
-    } on Object {
+    } on Object catch (error, stack) {
+      _diagnostics.recordError('bootstrap.failed', error, stack);
       _initialized = true;
       _notice = '无法读取本机存储，请重启应用';
       notifyListeners();
@@ -135,6 +140,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _initialized = true;
+    final signedInNames = ProviderId.values
+        .where((provider) => _providers[provider]!.isSignedIn)
+        .map((provider) => provider.name)
+        .join(',');
+    _diagnostics.record('bootstrap.done', {
+      'signedIn': signedInNames.isEmpty ? 'none' : signedInNames,
+      'cached': ProviderId.values
+          .where((provider) => _providers[provider]!.hasSnapshot)
+          .length,
+      'interval': _settings.refreshInterval.name,
+    });
     _restartSchedule();
     notifyListeners();
 
@@ -243,9 +259,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (signedIn.isEmpty) {
       return;
     }
-    final eligible = signedIn
-        .where((provider) => !_credentialRefreshBlocked.contains(provider))
-        .toList(growable: false);
+    // 凭据阻断只挡自动刷新。手动刷新一律放行：凭据失效的判定可能来自一次
+    // 网络异常（代理拦截页、网关 4xx），让用户下拉一次就能自愈，而不是只剩
+    // 重新登录一条路。
+    final eligible = manual
+        ? signedIn.toList(growable: false)
+        : signedIn
+              .where(
+                (provider) => !_credentialRefreshBlocked.contains(provider),
+              )
+              .toList(growable: false);
     if (eligible.isEmpty) {
       return;
     }
@@ -263,11 +286,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       _showHeldNotice(earliest);
       return;
     }
-    await Future.wait(runnable.map((provider) => refreshProvider(provider)));
+    await Future.wait(
+      runnable.map((provider) => refreshProvider(provider, manual: manual)),
+    );
   }
 
-  Future<void> refreshProvider(ProviderId provider) {
-    if (_credentialRefreshBlocked.contains(provider)) {
+  Future<void> refreshProvider(ProviderId provider, {bool manual = false}) {
+    if (!manual && _credentialRefreshBlocked.contains(provider)) {
       return Future<void>.value();
     }
     final generation = _authGeneration(provider);
@@ -311,7 +336,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           : RefreshState.loading,
       lastAttemptAt: _now(),
       clearRetryAfter: true,
-      clearError: true,
     );
     notifyListeners();
 
@@ -356,7 +380,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         isSignedIn: true,
         identity: result.identity,
         snapshot: snapshot,
-        resetCredits: result.resetCredits,
+        // resetCredits 走的是独立请求，失败时会是 null。只有换了账号才该丢掉
+        // 旧值，否则那一行会在额度本身刷新成功时莫名其妙变成 --。
+        resetCredits:
+            result.resetCredits ??
+            (identityChanged ? null : current.resetCredits),
         // credits / spend 与 snapshot 同出一次 usage 响应，因此跟随 snapshot 的
         // 生命周期：失败时一起转陈旧，不像 resetCredits 那样单独清空。
         credits: result.credits,
@@ -364,6 +392,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         lastSuccessAt: _now(),
         lastAttemptAt: current.lastAttemptAt,
       );
+      if (before.availability != ProviderAvailability.ready ||
+          _credentialRefreshBlocked.contains(provider)) {
+        _diagnostics.record('refresh.recovered', {
+          'provider': provider.name,
+          'from': before.availability.name,
+        });
+      }
       _providerHeldUntil.remove(provider);
       _credentialRefreshBlocked.remove(provider);
       _rateFailures.remove(provider);
@@ -422,6 +457,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final current = _providers[provider]!;
     final failure = result.failure!;
     if (failure == ProviderFetchFailureKind.noCredentials) {
+      _diagnostics.record('refresh.credentialsGone', {
+        'provider': provider.name,
+      });
       _providers[provider] = ProviderViewState.initial(provider);
       await _removeProviderCache(provider);
       if (!_isCurrentAuthGeneration(provider, generation)) {
@@ -447,12 +485,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     };
     if (failure == ProviderFetchFailureKind.credentials) {
       _credentialRefreshBlocked.add(provider);
+    } else {
+      // 换来了别的答案，说明上一次「凭据失效」的判定至少现在不成立。解除阻断，
+      // 否则误判之后即使网络恢复，自动刷新也还停着，得靠用户再手动刷一次。
+      _credentialRefreshBlocked.remove(provider);
     }
     final delay = _retryDelay(provider, failure, result.retryAfter);
     final retryAt = delay == null ? null : _now().add(delay);
     if (retryAt != null) {
       _providerHeldUntil[provider] = retryAt;
     }
+    _diagnostics.record('refresh.failed', {
+      'provider': provider.name,
+      'kind': failure.name,
+      'retryInSec': delay?.inSeconds,
+      'autoBlocked': _credentialRefreshBlocked.contains(provider),
+      'hasSnapshot': current.hasSnapshot,
+    });
     _providers[provider] = current.copyWith(
       refresh: RefreshState.idle,
       freshness: current.hasSnapshot
@@ -463,7 +512,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       clearRetryAfter: retryAt == null,
       errorKind: errorKind,
       clearError: errorKind == null,
-      clearResetCredits: provider == ProviderId.codex,
     );
     notifyListeners();
   }
@@ -588,6 +636,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             ? 'Codex 登录端口 1455 和 1457 都被占用'
             : 'Claude Code 登录端口被占用',
       OAuthFailureKind.browserUnavailable => '没有可用的浏览器，或浏览器打开失败',
+      OAuthFailureKind.network => '$name 登录时网络不可用，请检查网络或代理后重试',
       OAuthFailureKind.tokenExchange => '$name 登录交换凭据失败',
       OAuthFailureKind.invalidResponse => '$name 返回了无法识别的登录结果',
       OAuthFailureKind.secureStorage => '无法安全保存 $name 登录凭据',
@@ -595,6 +644,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> signOut(ProviderId provider) async {
+    _diagnostics.record('signOut', {'provider': provider.name});
     final generation = _advanceAuthGeneration(provider);
     await _credentials.delete(provider);
     await _removeProviderCache(provider);
@@ -674,6 +724,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
     } else {
       _scheduleTimer?.cancel();
+      // 节流中的记录在这里落盘：应用被系统回收前，这通常是最后一次机会。
+      unawaited(_diagnostics.flush());
     }
   }
 

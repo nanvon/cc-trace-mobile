@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cc_trace_mobile/auth/oauth_config.dart';
 import 'package:cc_trace_mobile/auth/token_bundle.dart';
+import 'package:cc_trace_mobile/diagnostics/app_diagnostics.dart';
 import 'package:cc_trace_mobile/domain/quota_models.dart';
 import 'package:cc_trace_mobile/providers/provider_api.dart';
 import 'package:cc_trace_mobile/storage/credentials_store.dart';
@@ -538,4 +540,314 @@ void main() {
 
     expect(result.failure, ProviderFetchFailureKind.offline);
   });
+
+  TokenBundle expiredCodexToken(DateTime now) {
+    return TokenBundle(
+      provider: ProviderId.codex,
+      accessToken: 'expired',
+      refreshToken: 'refresh',
+      obtainedAt: now.subtract(const Duration(hours: 2)),
+      expiresAt: now.subtract(const Duration(minutes: 1)),
+    );
+  }
+
+  TokenBundle validClaudeToken(DateTime now) {
+    return TokenBundle(
+      provider: ProviderId.claude,
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      obtainedAt: now,
+      expiresAt: now.add(const Duration(hours: 1)),
+    );
+  }
+
+  Future<ProviderFetchResult> fetchWith(
+    TokenBundle token,
+    DateTime now,
+    MockClient client,
+  ) async {
+    final credentials = MemoryCredentialsStore();
+    await credentials.write(token);
+    return ProviderApi(
+      credentials: credentials,
+      client: client,
+      now: () => now,
+    ).fetch(token.provider);
+  }
+
+  test('token refresh treats invalid_grant as a credential failure', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      expiredCodexToken(now),
+      now,
+      MockClient(
+        (_) async => http.Response(
+          '{"error":"invalid_grant"}',
+          400,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.credentials);
+  });
+
+  test('token refresh does not blame credentials for other 400s', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      expiredCodexToken(now),
+      now,
+      MockClient(
+        (_) async => http.Response(
+          '{"error":"invalid_request"}',
+          400,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.protocol);
+  });
+
+  test('a captive portal 400 on the token endpoint reads as offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      expiredCodexToken(now),
+      now,
+      MockClient(
+        (_) async => http.Response(
+          '<html><body>Proxy error</body></html>',
+          400,
+          headers: {'content-type': 'text/html'},
+        ),
+      ),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
+
+  test(
+    'a 401 web page reads as offline, not as a signed-out account',
+    () async {
+      final now = DateTime(2026, 7, 29, 9);
+
+      final result = await fetchWith(
+        validClaudeToken(now),
+        now,
+        MockClient(
+          (_) async => http.Response(
+            '<html><body>Sign in to the network</body></html>',
+            401,
+            headers: {'content-type': 'text/html'},
+          ),
+        ),
+      );
+
+      expect(result.failure, ProviderFetchFailureKind.offline);
+    },
+  );
+
+  test('a 401 from the provider itself still means credentials', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final tokenEndpoint = providerConfigs[ProviderId.claude]!.tokenEndpoint;
+    final requested = <String>[];
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient((request) async {
+        requested.add(request.url.toString());
+        // 真凭据失效：资源端点先报 401，刷新时 token endpoint 自己说明原因。
+        if (request.url.toString() == tokenEndpoint) {
+          return http.Response(
+            '{"error":"invalid_grant"}',
+            400,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"error":{"type":"authentication_error"}}',
+          401,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.credentials);
+    expect(requested, contains(tokenEndpoint));
+  });
+
+  test('an intercepted 401 never triggers a token refresh', () async {
+    final now = DateTime(2026, 7, 29, 9);
+    final tokenEndpoint = providerConfigs[ProviderId.claude]!.tokenEndpoint;
+    final requested = <String>[];
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient((request) async {
+        requested.add(request.url.toString());
+        return http.Response(
+          '<html><body>Sign in to the network</body></html>',
+          401,
+          headers: {'content-type': 'text/html'},
+        );
+      }),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+    expect(requested, isNot(contains(tokenEndpoint)));
+  });
+
+  test('a 403 web page reads as offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient(
+        (_) async => http.Response(
+          '<html>blocked</html>',
+          403,
+          headers: {'content-type': 'text/html'},
+        ),
+      ),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
+
+  test('proxy authentication required reads as offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient((_) async => http.Response('', 407)),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
+
+  test('a TLS handshake failure reads as offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient((_) async {
+        throw const HandshakeException(
+          'Connection terminated during handshake',
+        );
+      }),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
+
+  test('an intercepted 200 web page reads as offline', () async {
+    final now = DateTime(2026, 7, 29, 9);
+
+    final result = await fetchWith(
+      validClaudeToken(now),
+      now,
+      MockClient(
+        (_) async => http.Response(
+          '<html><body>Connect to Wi-Fi</body></html>',
+          200,
+          headers: {'content-type': 'text/html'},
+        ),
+      ),
+    );
+
+    expect(result.failure, ProviderFetchFailureKind.offline);
+  });
+
+  test(
+    'the HTTP outcome reaches the diagnostics log without the body',
+    () async {
+      final now = DateTime(2026, 7, 29, 9);
+      final diagnostics = AppDiagnostics(now: () => now);
+      final credentials = MemoryCredentialsStore();
+      await credentials.write(
+        TokenBundle(
+          provider: ProviderId.codex,
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          obtainedAt: now,
+          expiresAt: now.add(const Duration(hours: 1)),
+          accountId: 'account-id',
+          accountHint: 'sample@example.com',
+        ),
+      );
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'detail': 'quota exceeded for sample@example.com'}),
+          429,
+          headers: {'content-type': 'application/json', 'retry-after': '120'},
+        );
+      });
+      final api = ProviderApi(
+        credentials: credentials,
+        client: client,
+        now: () => now,
+        diagnostics: diagnostics,
+      );
+
+      final result = await api.fetch(ProviderId.codex);
+      expect(result.failure, ProviderFetchFailureKind.rateLimited);
+
+      final exported = diagnostics.export();
+      expect(
+        exported,
+        contains('http.status  endpoint=usage status=429 json=true'),
+      );
+      // 响应体和账号都不能出现在日志里。
+      expect(exported, isNot(contains('quota exceeded')));
+      expect(exported, isNot(contains('sample@example.com')));
+      expect(exported, isNot(contains('access')));
+      diagnostics.dispose();
+    },
+  );
+
+  test(
+    'an unreachable endpoint is logged with the reason, not the URL',
+    () async {
+      final now = DateTime(2026, 7, 29, 9);
+      final diagnostics = AppDiagnostics(now: () => now);
+      final credentials = MemoryCredentialsStore();
+      await credentials.write(
+        TokenBundle(
+          provider: ProviderId.claude,
+          accessToken: 'access',
+          refreshToken: 'refresh',
+          obtainedAt: now,
+          expiresAt: now.add(const Duration(hours: 1)),
+          accountHint: 'sample@example.com',
+          accountFingerprint: 'fingerprint',
+          plan: 'Pro',
+        ),
+      );
+      final client = MockClient((request) async {
+        throw const SocketException('Connection refused');
+      });
+      final api = ProviderApi(
+        credentials: credentials,
+        client: client,
+        now: () => now,
+        diagnostics: diagnostics,
+      );
+
+      final result = await api.fetch(ProviderId.claude);
+      expect(result.failure, ProviderFetchFailureKind.offline);
+      expect(
+        diagnostics.export(),
+        contains('http.unreachable  endpoint=usage reason=socket'),
+      );
+      diagnostics.dispose();
+    },
+  );
 }

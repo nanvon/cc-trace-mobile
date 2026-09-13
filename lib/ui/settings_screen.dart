@@ -6,7 +6,7 @@ import '../domain/app_settings.dart';
 import '../domain/quota_models.dart';
 import '../q3/q3_screen.dart';
 import 'app_theme.dart';
-import 'oauth_diagnostics_screen.dart';
+import 'diagnostics_screen.dart';
 import 'sign_in_flow.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -85,18 +85,18 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const _SectionLabel('登录'),
+              const _SectionLabel('诊断'),
               _SettingsCard(
                 children: [
                   ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     minTileHeight: 58,
                     title: const Text(
-                      '登录诊断',
+                      '诊断日志',
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     subtitle: Text(
-                      '登录失败时把记录复制给开发者',
+                      '出问题时把记录复制给开发者',
                       style: TextStyle(
                         color: context.palette.default500,
                         fontSize: 12,
@@ -109,7 +109,7 @@ class SettingsScreen extends StatelessWidget {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => const OAuthDiagnosticsScreen(),
+                          builder: (_) => const DiagnosticsScreen(),
                         ),
                       );
                     },

@@ -3,15 +3,23 @@ import 'package:flutter/services.dart';
 
 import 'app/app_controller.dart';
 import 'auth/oauth_coordinator.dart';
+import 'diagnostics/app_diagnostics.dart';
+import 'diagnostics/diagnostics_bootstrap.dart';
 import 'domain/app_settings.dart';
 import 'providers/provider_api.dart';
 import 'storage/credentials_store.dart';
+import 'storage/diagnostics_store.dart';
 import 'storage/local_store.dart';
 import 'ui/app_theme.dart';
 import 'ui/usage_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // 尽早装：启动阶段的异常也要能留下记录。
+  installDiagnostics(
+    AppDiagnostics.instance,
+    SharedPreferencesDiagnosticsStore(),
+  );
   // 透明状态栏只有在 edge-to-edge 下才生效；Android 15 起系统已强制该模式。
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final credentials = SecureCredentialsStore();

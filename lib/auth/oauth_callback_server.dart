@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'loopback_bindings.dart';
 import 'oauth_config.dart';
-import 'oauth_diagnostics.dart';
+import '../diagnostics/app_diagnostics.dart';
 import 'oauth_return_page.dart';
 
 enum OAuthCallbackKind { accepted, providerCancelled, invalid, serverError }
@@ -63,7 +63,7 @@ class OAuthCallbackServer {
     for (final port in config.ports) {
       try {
         final servers = await bindLoopbackServers(port);
-        OAuthDiagnostics.instance.record('server.bound', {
+        AppDiagnostics.instance.record('server.bound', {
           'port': servers.first.port,
           'listeners': servers.length,
         });
@@ -73,7 +73,7 @@ class OAuthCallbackServer {
           expectedState: expectedState,
         );
       } on SocketException {
-        OAuthDiagnostics.instance.record('server.portBusy', {'port': port});
+        AppDiagnostics.instance.record('server.portBusy', {'port': port});
         continue;
       }
     }
@@ -83,7 +83,7 @@ class OAuthCallbackServer {
   Future<void> _handle(HttpRequest request) async {
     try {
       // 只记录判定结果，绝不记录 query 内容：这份日志是给用户整份复制走的。
-      OAuthDiagnostics.instance.record('callback.request', {
+      AppDiagnostics.instance.record('callback.request', {
         'method.get': request.method == 'GET',
         'path.match': request.uri.path == config.callbackPath,
       });
@@ -95,7 +95,7 @@ class OAuthCallbackServer {
       final event = evaluateCallbackUri(request.uri);
       await _respond(request, event.kind == OAuthCallbackKind.accepted);
       if (event.kind == OAuthCallbackKind.accepted) {
-        OAuthDiagnostics.instance.record('callback.accepted');
+        AppDiagnostics.instance.record('callback.accepted');
       }
       _emit(event);
     } on Object {
@@ -139,7 +139,7 @@ class OAuthCallbackServer {
     }
     final event = evaluateCallbackUri(uri);
     // 只记判定结果，绝不记 query：这份日志是给用户整份复制走的。
-    OAuthDiagnostics.instance.record('callback.intent', {
+    AppDiagnostics.instance.record('callback.intent', {
       'accepted': event.kind == OAuthCallbackKind.accepted,
     });
     _emit(event);
@@ -169,7 +169,7 @@ class OAuthCallbackServer {
 
   void _emit(OAuthCallbackEvent event) {
     if (event.kind != OAuthCallbackKind.accepted) {
-      OAuthDiagnostics.instance.record('callback.rejected', {
+      AppDiagnostics.instance.record('callback.rejected', {
         'kind': event.kind.name,
       });
     }

@@ -506,7 +506,10 @@ class _ProviderCardState extends State<_ProviderCard>
                         _ClaudeSpendRow(spend: spend, stale: stale),
                       if (state.provider == ProviderId.codex &&
                           (state.isSignedIn || state.hasSnapshot))
-                        _ResetCreditsRow(credits: state.resetCredits),
+                        _ResetCreditsRow(
+                          credits: state.resetCredits,
+                          stale: stale,
+                        ),
                       if (canExpand)
                         _CodexTimeDetailsReveal(
                           animation: _expansion,
@@ -530,7 +533,7 @@ class _ProviderCardState extends State<_ProviderCard>
                     if (alert.action == _AlertAction.login) {
                       startSignIn(context, controller, state.provider);
                     } else {
-                      controller.refreshProvider(state.provider);
+                      controller.refreshProvider(state.provider, manual: true);
                     }
                   },
                   busy: controller.authorizing == state.provider,
@@ -847,9 +850,10 @@ class _CardMetaRow extends StatelessWidget {
 }
 
 class _ResetCreditsRow extends StatelessWidget {
-  const _ResetCreditsRow({required this.credits});
+  const _ResetCreditsRow({required this.credits, required this.stale});
 
   final ResetCreditsSnapshot? credits;
+  final bool stale;
 
   @override
   Widget build(BuildContext context) {
@@ -857,7 +861,9 @@ class _ResetCreditsRow extends StatelessWidget {
     return _CardMetaRow(
       label: 'RESETS',
       value: credits == null ? '--' : '${credits!.availableCount} 次',
-      valueColor: credits == null ? context.palette.default400 : null,
+      valueColor: credits == null || stale
+          ? context.palette.default400
+          : null,
       trailing: earliest == null
           ? null
           : Text(
@@ -1625,7 +1631,8 @@ String _latestSubtitle(AppController controller) {
     }
     return left.isAfter(right) ? left : right;
   });
-  return _ageLabel(representative, controller.now);
+  // 有陈旧数据时取的是最早那次成功，说成「已刷新」会让人以为刚拿到新数据。
+  return _ageLabel(representative, controller.now, oldData: hasStale);
 }
 
 bool _isLive(AppController controller) {
