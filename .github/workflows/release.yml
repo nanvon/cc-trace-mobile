@@ -12,9 +12,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  FLUTTER_VERSION: '3.44.8'
-
 jobs:
   prepare:
     name: Verify release version
@@ -48,7 +45,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          flutter-version-file: pubspec.yaml
           cache: true
 
       - name: Show toolchain versions
@@ -84,7 +81,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+          flutter-version-file: pubspec.yaml
           cache: true
 
       - name: Install dependencies

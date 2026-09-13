@@ -5,6 +5,7 @@ version: 0.1.15+2016
 
 environment:
   sdk: ^3.12.2
+  flutter: 3.47.0
 
 dependencies:
   crypto: ^3.0.7
