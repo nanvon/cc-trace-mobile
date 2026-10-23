@@ -10,14 +10,10 @@
 </p>
 
 <p align="center">
-  <img alt="iOS" src="https://img.shields.io/badge/iOS-13%2B-000000?logo=apple&logoColor=white">
-  <img alt="Android" src="https://img.shields.io/badge/Android-arm64-3DDC84?logo=android&logoColor=white">
-  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-02569B?logo=flutter&logoColor=white">
   <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/nanvon/cc-trace-mobile?color=brightgreen"></a>
   <a href="https://github.com/nanvon/cc-trace-mobile/releases"><img alt="Total Downloads" src="https://img.shields.io/github/downloads/nanvon/cc-trace-mobile/total?color=blue"></a>
   <a href="https://github.com/nanvon/cc-trace-mobile/releases/latest"><img alt="Latest Downloads" src="https://img.shields.io/github/downloads/nanvon/cc-trace-mobile/latest/total?label=latest%20downloads&color=blue"></a>
   <a href="https://github.com/nanvon/cc-trace-mobile/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/nanvon/cc-trace-mobile/ci.yml?branch=main"></a>
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-orange">
 </p>
 
 <p align="center">
