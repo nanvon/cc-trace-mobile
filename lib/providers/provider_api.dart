@@ -11,6 +11,7 @@ import '../auth/token_bundle.dart';
 import '../diagnostics/app_diagnostics.dart';
 import '../domain/quota_models.dart';
 import '../network/abortable_http.dart';
+import '../network/android_claude_vpn_client.dart';
 import '../storage/credentials_store.dart';
 import 'usage_parsers.dart';
 
@@ -89,16 +90,23 @@ class ProviderApi implements ProviderGateway {
     AppDiagnostics? diagnostics,
   }) : _credentials = credentials,
        _client = client ?? http.Client(),
+       _claudeVpnClient = client == null && Platform.isAndroid
+           ? AndroidClaudeVpnClient()
+           : null,
        _ownsClient = client == null,
        _now = now ?? DateTime.now,
        _diagnostics = diagnostics ?? AppDiagnostics.instance;
 
   final CredentialsStore _credentials;
   final http.Client _client;
+  final AndroidClaudeVpnClient? _claudeVpnClient;
   final bool _ownsClient;
   final DateTime Function() _now;
   final AppDiagnostics _diagnostics;
   final Map<ProviderId, _TokenRefresh> _refreshingTokens = {};
+
+  http.Client _clientFor(ProviderId provider) =>
+      provider == ProviderId.claude ? _claudeVpnClient ?? _client : _client;
 
   @override
   Future<ProviderFetchResult> fetch(ProviderId provider) async {
@@ -253,7 +261,7 @@ class ProviderApi implements ProviderGateway {
           'client_id': config.clientId,
         };
       }
-      response = await sendWithTimeout(_client, request);
+      response = await sendWithTimeout(_clientFor(token.provider), request);
     } on TimeoutException {
       _recordUnreachable('token', 'timeout');
       throw const _RequestFailure(ProviderFetchFailureKind.offline);
@@ -355,6 +363,7 @@ class ProviderApi implements ProviderGateway {
       if (provider == ProviderId.claude) 'anthropic-beta': 'oauth-2025-04-20',
     };
     final response = await _get(
+      provider,
       Uri.parse(config.usageEndpoint),
       headers,
       'usage',
@@ -409,11 +418,16 @@ class ProviderApi implements ProviderGateway {
   }
 
   Future<_ClaudeProfile> _requestClaudeProfile(TokenBundle token) async {
-    final response = await _get(Uri.parse(claudeProfileEndpoint), {
-      'Accept': 'application/json',
-      'Authorization': 'Bearer ${token.accessToken}',
-      'Content-Type': 'application/json',
-    }, 'profile');
+    final response = await _get(
+      ProviderId.claude,
+      Uri.parse(claudeProfileEndpoint),
+      {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${token.accessToken}',
+        'Content-Type': 'application/json',
+      },
+      'profile',
+    );
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     if (decoded is! Map) {
       throw const FormatException();
@@ -463,6 +477,7 @@ class ProviderApi implements ProviderGateway {
       if (token.accountId != null) 'ChatGPT-Account-Id': token.accountId!,
     };
     final response = await _get(
+      ProviderId.codex,
       Uri.parse(resetCreditsEndpoint),
       headers,
       'resetCredits',
@@ -478,6 +493,7 @@ class ProviderApi implements ProviderGateway {
   /// [endpoint] 只是给诊断日志用的短名（`usage` / `profile` / `resetCredits`），
   /// 不写完整 URL：完整 URL 里可能带账号相关的查询参数。
   Future<http.Response> _get(
+    ProviderId provider,
     Uri uri,
     Map<String, String> headers,
     String endpoint,
@@ -485,7 +501,7 @@ class ProviderApi implements ProviderGateway {
     late final http.Response response;
     try {
       final request = http.Request('GET', uri)..headers.addAll(headers);
-      response = await sendWithTimeout(_client, request);
+      response = await sendWithTimeout(_clientFor(provider), request);
     } on TimeoutException {
       _recordUnreachable(endpoint, 'timeout');
       throw const _RequestFailure(ProviderFetchFailureKind.offline);

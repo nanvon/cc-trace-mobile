@@ -41,6 +41,7 @@ class MainActivity : FlutterActivity() {
 
     private var channel: MethodChannel? = null
     private var keepAliveChannel: MethodChannel? = null
+    private var claudeVpnTransport: ClaudeVpnTransport? = null
     private var browserLaunchPending = false
     private var browserPauseObserved = false
     private var customTabsSession: CustomTabsSession? = null
@@ -90,6 +91,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        claudeVpnTransport = ClaudeVpnTransport(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).also {
             methodChannel ->
             methodChannel.setMethodCallHandler { call, result ->
@@ -500,6 +505,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        claudeVpnTransport?.close()
+        claudeVpnTransport = null
         channel?.setMethodCallHandler(null)
         channel = null
         keepAliveChannel?.setMethodCallHandler(null)
